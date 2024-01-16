@@ -1,0 +1,430 @@
+Parameters:
+  Vpc:
+    Type: AWS::EC2::VPC::Id
+
+  SubnetA:
+    Type: AWS::EC2::Subnet::Id
+
+  SubnetB:
+    Type: AWS::EC2::Subnet::Id
+
+  TargetS3Bucket:
+    Type: String
+
+  TargetS3Prefix:
+    Type: String
+    Default: talk-radio-ingest
+
+  ApplicationName:
+    Type: String
+    Default: talk-radio-ingest
+
+  PGPORT:
+    Type: Number
+    Default: 5432
+
+  POSTGRES_DB:
+    Type: String
+    Default: postgres
+
+  POSTGRES_USER:
+    Type: String
+    Default: postgres
+
+  DesiredWorkerCount:
+    Type: Number
+    Default: 1
+
+  LOG_LEVEL:
+    Type: String
+    Default: INFO
+
+  N_TASKS:
+    Type: Number
+    Default: 10
+
+  POLL_INTERVAL:
+    Type: Number
+    Default: 60
+
+  CHUNK_SIZE:
+    Type: Number
+    Default: 5242880
+
+  CHUNK_ERROR_BEHAVIOR:
+    Type: String
+    Default: ignore
+
+  CHUNK_ERROR_THRESHOLD:
+    Type: Number
+    Default: 10
+
+  # You'll also need to create a password in AWS Secrets Manager for the
+  # database: It should be called ${ApplicationName}-postgres-password (sub in
+  # the value of ApplicationName below, default talk-radio-ingest).
+  #
+  # Like so:
+  #   aws secretsmanager create-secret \
+  #   --name talk-radio-ingest-postgres-password \
+  #   --secret-string 'your_password_here'
+  #
+  # The bin/ensure-secret.sh script will do this for you based on conf.env.
+
+Resources:
+  #
+  # Security groups
+  #
+
+  ComputeSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref Vpc
+      GroupName: !Sub '${ApplicationName}-compute'
+      GroupDescription: !Sub 'Compute security group for ${ApplicationName}'
+      SecurityGroupEgress:
+        - IpProtocol: -1  # tcp and udp
+          FromPort: 0
+          ToPort: 65535
+          CidrIp: 0.0.0.0/0
+      SecurityGroupIngress:
+        - IpProtocol: -1
+          FromPort: 0
+          ToPort: 65535
+          SourceSecurityGroup: !Ref ComputeSecurityGroup
+
+  #
+  # CloudWatch resources
+  #
+
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Ref ApplicationName
+      RetentionInDays: 30
+
+  #
+  # Service discovery for Postgres
+  #
+
+  ServiceDiscoveryNamespace:
+    Type: AWS::ServiceDiscovery::PrivateDnsNamespace
+    Properties:
+      Vpc: !Ref Vpc
+      Name: !Sub '${ApplicationName}.local'
+
+  PostgresServiceDiscovery:
+    Type: AWS::ServiceDiscovery::Service
+    Properties:
+      Name: postgres
+      NamespaceId: !GetAtt ServiceDiscoveryNamespace.Id
+      DnsConfig:
+        DnsRecords:
+          - Type: "A"
+            TTL: 60
+        RoutingPolicy: "MULTIVALUE"
+
+  #
+  # IAM roles for ECS
+  #
+
+  ECSTaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action: sts:AssumeRole
+            Principal:
+              Service:
+                - ecs-tasks.amazonaws.com
+      ManagedPolicyArns:
+        - "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+
+  WorkerTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action: sts:AssumeRole
+            Principal:
+              Service:
+                - ecs-tasks.amazonaws.com
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/CloudWatchLogsFullAccess'
+        - 'arn:aws:iam::aws:policy/AmazonS3FullAccess'
+
+  #
+  # ECS infrastructure
+  #
+
+  Cluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Ref ApplicationName
+
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: /
+      Roles:
+        - !Ref InstanceRole
+
+  LaunchConfiguration:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties:
+      ImageId:  !FindInMap [AWSRegionToAMI, !Ref "AWS::Region", AMI]
+      AssociatePublicIpAddress: true
+      InstanceType: !Ref InstanceType
+      SecurityGroups:
+        - !Ref ComputeSecurityGroup
+      IamInstanceProfile: !Ref InstanceProfile
+      UserData:
+        "Fn::Base64": !Sub |
+          #!/bin/bash
+          yum install -y aws-cfn-bootstrap
+          /opt/aws/bin/cfn-init -v --region ${AWS::Region} --stack ${AWS::StackName} --resource LaunchConfiguration
+          /opt/aws/bin/cfn-signal -e $? --region ${AWS::Region} --stack ${AWS::StackName} --resource AutoScalingGroup
+
+    Metadata:
+      AWS::CloudFormation::Init:
+        config:
+          packages:
+            yum:
+              awslogs: []
+
+          commands:
+            01_add_instance_to_cluster:
+              command: !Sub echo ECS_CLUSTER=${Cluster} >> /etc/ecs/ecs.config
+
+            02_reserve_system_memory:
+              command: echo ECS_RESERVED_MEMORY=256 >> /etc/ecs/ecs.config
+
+          files:
+            "/etc/cfn/cfn-hup.conf":
+              mode: 000400
+              owner: root
+              group: root
+              content: !Sub |
+                [main]
+                stack=${AWS::StackId}
+                region=${AWS::Region}
+
+            "/etc/cfn/hooks.d/cfn-auto-reloader.conf":
+              content: !Sub |
+                [cfn-auto-reloader-hook]
+                triggers=post.update
+                path=Resources.LaunchConfiguration.Metadata.AWS::CloudFormation::Init
+                action=/opt/aws/bin/cfn-init -v --region ${AWS::Region} --stack ${AWS::StackName} --resource LaunchConfiguration
+
+            "/etc/awslogs/awscli.conf":
+              content: !Sub |
+                [plugins]
+                cwlogs = cwlogs
+                [default]
+                region = ${AWS::Region}
+
+            "/etc/awslogs/awslogs.conf":
+              content: !Sub |
+                [general]
+                state_file = /var/lib/awslogs/agent-state
+
+                [/var/log/dmesg]
+                file = /var/log/dmesg
+                log_group_name = ${Cluster}-/var/log/dmesg
+                log_stream_name = {instance_id}/var/log/dmesg
+
+                [/var/log/messages]
+                file = /var/log/messages
+                log_group_name = ${Cluster}-/var/log/messages
+                log_stream_name = {instance_id}/var/log/messages
+                datetime_format = %b %d %H:%M:%S
+
+                [/var/log/docker]
+                file = /var/log/docker
+                log_group_name = ${Cluster}-/var/log/docker
+                log_stream_name = {instance_id}/var/log/docker
+                datetime_format = %Y-%m-%dT%H:%M:%S.%f
+
+                [/var/log/ecs/ecs-init.log]
+                file = /var/log/ecs/ecs-init.log.*
+                log_group_name = ${Cluster}-/var/log/ecs/ecs-init.log
+                log_stream_name = {instance_id}/var/log/ecs/ecs-init.log
+                datetime_format = %Y-%m-%dT%H:%M:%SZ
+
+                [/var/log/ecs/ecs-agent.log]
+                file = /var/log/ecs/ecs-agent.log.*
+                log_group_name = ${Cluster}-/var/log/ecs/ecs-agent.log
+                log_stream_name = {instance_id}/var/log/ecs/ecs-agent.log
+                datetime_format = %Y-%m-%dT%H:%M:%SZ
+
+                [/var/log/ecs/audit.log]
+                file = /var/log/ecs/audit.log.*
+                log_group_name = ${Cluster}-/var/log/ecs/audit.log
+                log_stream_name = {instance_id}/var/log/ecs/audit.log
+                datetime_format = %Y-%m-%dT%H:%M:%SZ
+
+          services:
+            sysvinit:
+              cfn-hup:
+                enabled: true
+                ensureRunning: true
+                files:
+                  - /etc/cfn/cfn-hup.conf
+                  - /etc/cfn/hooks.d/cfn-auto-reloader.conf
+
+              awslogs:
+                enabled: true
+                ensureRunning: true
+                files:
+                  - /etc/awslogs/awslogs.conf
+                  - /etc/awslogs/awscli.conf
+
+  AutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      VPCZoneIdentifier:
+        - !Ref ComputeSubnetA
+        - !Ref ComputeSubnetB
+      LaunchConfigurationName: !Ref LaunchConfiguration
+      MinSize: !Ref DesiredClusterCount
+      MaxSize: !Ref DesiredClusterCount
+      DesiredCapacity: !Ref DesiredClusterCount
+      Tags:
+        - Key: Name
+          Value: !Sub ${ApplicationName} ECS host
+          PropagateAtLaunch: true
+    CreationPolicy:
+      ResourceSignal:
+        Timeout: PT15M
+    UpdatePolicy:
+      AutoScalingRollingUpdate:
+        MinInstancesInService: 1
+        MaxBatchSize: 1
+        PauseTime: PT15M
+        SuspendProcesses:
+          - HealthCheck
+          - ReplaceUnhealthy
+          - AZRebalance
+          - AlarmNotification
+          - ScheduledActions
+        WaitOnResourceSignals: true
+
+
+  PostgresService:
+    Type: AWS::ECS::Service
+    Properties:
+      Cluster: !Ref Cluster
+      LaunchType: EC2
+      TaskDefinition: !Ref PostgresTask
+      ServiceRegistries:
+        - RegistryArn: !GetAtt PostgresServiceDiscovery.Arn
+      DesiredCount: 1
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          Subnets:
+            - !Ref SubnetA
+            - !Ref SubnetB
+          SecurityGroups:
+            - !Ref ComputeSecurityGroup
+
+  WorkerService:
+    Type: AWS::ECS::Service
+    Properties:
+      Cluster: !Ref Cluster
+      LaunchType: EC2
+      TaskDefinition: !Ref WorkerTask
+      DesiredCount: !Ref DesiredWorkerCount
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          Subnets:
+            - !Ref SubnetA
+            - !Ref SubnetB
+          SecurityGroups:
+            - !Ref ComputeSecurityGroup
+
+  PostgresTask:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub '${ApplicationName}-task-postgres'
+      ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
+      NetworkMode: awsvpc
+      ContainerDefinitions:
+        - Name: !Sub '${ApplicationName}-postgres'
+          Image: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${ApplicationName}/postgres:latest'
+          Essential: true
+          MemoryReservation: 256
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroup
+              awslogs-region: !Ref ${AWS::Region}
+              awslogs-stream-prefix: !Sub '${ApplicationName}-task-prefix'
+          Environment:
+            - Name: POSTGRES_USER
+              Value: !Ref POSTGRES_USER
+            - Name: POSTGRES_DB
+              Value: !Ref POSTGRES_DB
+            - Name: PGPORT
+              Value: !Ref PGPORT
+          Secrets:
+            - Name: POSTGRES_PASSWORD
+              ValueFrom: !Sub '{{resolve:secretsmanager:${ApplicationName}-postgres-password:SecretString}}'
+
+  WorkerTask:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub '${ApplicationName}-task-worker'
+      ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
+      TaskRoleArn: !GetAtt WorkerTaskRole.Arn
+      NetworkMode: awsvpc
+      ContainerDefinitions:
+        - Name: !Sub '${ApplicationName}-worker'
+          Image: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${ApplicationName}/ingest:latest'
+          Essential: true
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroup
+              awslogs-region: !Ref ${AWS::Region}
+              awslogs-stream-prefix: !Sub '${ApplicationName}-task-worker'
+          MemoryReservation: 300  # NOTE for N_TASKS = 10; adjust if changed
+          Environment:
+            # see PostgresServiceDiscovery above
+            - Name: POSTGRES_HOST
+              Value: !Sub 'postgres.${ApplicationName}.local'
+
+            - Name: POSTGRES_USER
+              Value: !Ref POSTGRES_USER
+            - Name: POSTGRES_DB
+              Value: !Ref POSTGRES_DB
+            - Name: PGPORT
+              Value: !Ref PGPORT
+
+            - Name: S3_BUCKET
+              Value: !Ref TargetS3Bucket
+            - Name: S3_PREFIX
+              Value: !Ref TargetS3Prefix
+
+            - Name: LOG_LEVEL
+              Value: !Ref LOG_LEVEL
+            - Name: N_TASKS
+              Value: !Ref N_TASKS
+            - Name: POLL_INTERVAL
+              Value: !Ref POLL_INTERVAL
+            - Name: CHUNK_SIZE
+              Value: !Ref CHUNK_SIZE
+            - Name: CHUNK_ERROR_BEHAVIOR
+              Value: !Ref CHUNK_ERROR_BEHAVIOR
+            - Name: CHUNK_ERROR_THRESHOLD
+              Value: !Ref CHUNK_ERROR_THRESHOLD
+          Secrets:
+            - Name: POSTGRES_PASSWORD
+              ValueFrom: !Sub '{{resolve:secretsmanager:${ApplicationName}-postgres-password:SecretString}}'
+
+Outputs:
+  Cluster:
+    Description: !Sub 'Ingest ECS cluster for ${ApplicationName}'
+    Value: !Ref Cluster

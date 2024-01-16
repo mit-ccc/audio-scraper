@@ -1,0 +1,54 @@
+# This file specifies how to run the application locally. If you want to deploy
+# for many stations, see the CloudFormation templates in the `aws-deploy/`
+# directory.
+
+version: '2'
+
+services:
+  postgres:
+    build:
+      context: images/postgres
+    container_name: postgres
+    hostname: postgres
+    user: postgres
+    networks:
+      - stack
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: always
+    env_file: conf.env
+
+  ingest:
+    build:
+      context: images/ingest
+    container_name: ingest
+    networks:
+      - stack
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - POSTGRES_HOST=postgres
+    restart: always
+    env_file: conf.env
+
+  transcribe:
+    build:
+      context: images/transcribe
+    container_name: transcribe
+    networks:
+      - stack
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - POSTGRES_HOST=postgres
+    restart: always
+    env_file: conf.env
+
+networks:
+  stack:
+    driver: bridge

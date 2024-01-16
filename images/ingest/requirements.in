@@ -1,0 +1,6 @@
+requests
+pyodbc
+boto3
+bs4
+m3u8
+lxml

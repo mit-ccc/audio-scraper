@@ -1,0 +1,7 @@
+pyodbc
+boto3
+pyannote
+transformers
+pydub
+ffmpeg-python
+numpy
