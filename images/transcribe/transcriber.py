@@ -1,7 +1,9 @@
 import torch
 
-import pyannote.core
-import pyannote.audio
+from pyannote.audio.pipelines import SpeakerDiarization
+# import pyannote.core
+# import pyannote.audio
+# import pyannote.audio.pipelines
 import transformers as tf
 from pydub import AudioSegment
 
@@ -13,10 +15,10 @@ class Transcriber:
         self.asr = tf.pipeline(
             'automatic-speech-recognition',
             model=f"openai/whisper-{whisper_version}",
-            device=device
+            device=device,
         )
 
-        self.diarizer = pyannote.audio.pipelines.SpeakerDiarization(segmentation="pyannote/segmentation")
+        self.diarizer = SpeakerDiarization(segmentation='pyannote/segmentation')
 
     def process(self, chunk):
         data = chunk.fetch()

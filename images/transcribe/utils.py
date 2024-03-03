@@ -1,5 +1,6 @@
 from typing import Any, Union, Optional
 
+import os
 import io
 import random
 import logging
@@ -12,6 +13,24 @@ import torch
 
 
 logger = logging.getLogger(__name__)
+
+
+def log_setup():
+    logging.getLogger('boto3').setLevel(logging.WARNING)
+    logging.getLogger('botocore').setLevel(logging.WARNING)
+
+    try:
+        log_level = getattr(logging, os.environ['LOG_LEVEL'])
+    except KeyError:
+        log_level = logging.INFO
+    except AttributeError as exc:
+        raise AttributeError('Bad log level') from exc
+
+    logging.basicConfig(
+        level=log_level,
+        format='%(asctime)s %(name)-12s %(levelname)-8s %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
 
 
 def seed_everything(seed):

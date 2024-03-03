@@ -1,7 +1,8 @@
 pyodbc
 boto3
-pyannote
+pyannote-audio
 transformers
 pydub
 ffmpeg-python
 numpy
+torch==2.2.1
