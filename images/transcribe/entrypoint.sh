@@ -1,18 +1,18 @@
 #!/bin/bash
+# Variables are assumed to be in the environment
 
 set -Eeuo pipefail
 
-wait-for-it "$POSTGRES_HOST:$PGPORT" -- echo "Postgres is up"
+wait-for-it "${POSTGRES_HOST:-postgres}:${PGPORT:-5432}" -- echo "Postgres up"
 
-# Variables are assumed to be in the environment
 cat > ~/.odbc.ini << EOF
 [Database]
 Driver = /usr/lib/$(uname -m)-linux-gnu/odbc/psqlodbcw.so
-Servername = $POSTGRES_HOST
-Port = $PGPORT
-Database = $POSTGRES_DB
-UserName = $POSTGRES_USER
-Password = $POSTGRES_PASSWORD
+Servername = ${POSTGRES_HOST:-postgres}
+Port = ${PGPORT:-5432}
+Database = ${POSTGRES_DB:-postgres}
+UserName = ${POSTGRES_USER:-postgres}
+Password = ${POSTGRES_PASSWORD}
 BoolsAsChar = 0
 EOF
 
