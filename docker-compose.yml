@@ -5,55 +5,55 @@
 version: '3.7'
 
 services:
-  postgres:
-    build:
-      context: images/postgres
-    container_name: postgres
-    hostname: postgres
-    user: postgres
-    networks:
-      - stack
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    restart: always
-    env_file: conf.env
+    postgres:
+        build:
+            context: images/postgres
+        container_name: postgres
+        hostname: postgres
+        user: postgres
+        networks:
+            - stack
+        healthcheck:
+            test: ["CMD-SHELL", "pg_isready"]
+            interval: 10s
+            timeout: 5s
+            retries: 5
+        restart: always
+        env_file: conf.env
 
-  ingest:
-    build:
-      context: images/ingest
-    container_name: ingest
-    networks:
-      - stack
-    depends_on:
-      - postgres
-    environment:
-      - POSTGRES_HOST=postgres
-    restart: always
-    env_file: conf.env
+    ingest:
+        build:
+            context: images/ingest
+        container_name: ingest
+        networks:
+            - stack
+        depends_on:
+            - postgres
+        environment:
+            - POSTGRES_HOST=postgres
+        restart: always
+        env_file: conf.env
 
-  transcribe:
-    build:
-      context: images/transcribe
-    container_name: transcribe
-    networks:
-      - stack
-    depends_on:
-      - postgres
-    environment:
-      - POSTGRES_HOST=postgres
-    restart: always
-    env_file: conf.env
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           capabilities: [gpu]
-    #           count: all
+    transcribe:
+      build:
+          context: images/transcribe
+      container_name: transcribe
+      networks:
+          - stack
+      depends_on:
+          - postgres
+      environment:
+          - POSTGRES_HOST=postgres
+      restart: always
+      env_file: conf.env
+      # deploy:
+      #     resources:
+      #         reservations:
+      #             devices:
+      #                 - driver: nvidia
+      #                   capabilities: [gpu]
+      #                   count: all
 
 networks:
-  stack:
-    driver: bridge
+    stack:
+        driver: bridge
