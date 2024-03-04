@@ -247,7 +247,7 @@ class Worker:  # pylint: disable=too-many-instance-attributes
         with self.db.cursor() as cur:
             cur.execute('''
             select
-                callsign || '-' || band as station,
+                name as station,
                 stream_url
             from data.station
             where

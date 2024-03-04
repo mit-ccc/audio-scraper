@@ -1,4 +1,4 @@
-station_id	callsign	band	stream_url	auto_ingest
-1	WXYZ	FM	https://www.example.com/playlist.m3u	False
-2	KABC	AM	http://stream.example.com/listen-live	True
-3	WWWW	FM	https://www.example.com/radio-stream-wwww.pls	False
+station_id	name	stream_url	auto_ingest
+1	WXYZ-FM	https://www.example.com/playlist.m3u	False
+2	KABC-AM	http://stream.example.com/listen-live	True
+3	WWWW-FM	https://www.example.com/radio-stream-wwww.pls	False
