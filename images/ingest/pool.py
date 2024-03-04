@@ -1,5 +1,5 @@
 '''
-This module contains the RadioPool class, which is responsible for spawning
+This module contains the Pool class, which is responsible for spawning
 and managing the ingest workers.
 '''
 
@@ -8,11 +8,11 @@ import logging
 import multiprocessing as mp
 
 import exceptions as ex
-from radio_worker import payload
+from worker import payload
 
 logger = logging.getLogger(__name__)
 
-class RadioPool:
+class Pool:
     '''
     This class is responsible for spawning and managing the ingest workers.
     It's intended to be used as a context manager. If workers exit, they are

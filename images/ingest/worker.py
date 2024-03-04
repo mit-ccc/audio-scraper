@@ -1,6 +1,6 @@
 '''
-This file is the main file for the radio worker. It downloads the audio stream
-from the radio station's site and uploads it to S3.
+This file is the main file for the audio worker. It downloads the audio stream
+from the remote (e.g., radio station site) and uploads it to S3.
 '''
 
 import gc
@@ -23,11 +23,11 @@ logger = logging.getLogger(__name__)
 
 def payload(args):
     '''
-    Payload wrapper for RadioPool to run workers.
+    Payload wrapper for Pool to run workers.
     '''
 
     try:
-        with RadioWorker(**args) as worker:
+        with Worker(**args) as worker:
             worker.run()
     except Exception:
         logger.exception("Error in station ingest")
@@ -35,13 +35,13 @@ def payload(args):
         raise
 
 
-class RadioWorker:  # pylint: disable=too-many-instance-attributes
+class Worker:  # pylint: disable=too-many-instance-attributes
     '''
-    Worker class for radio ingest. The worker acquires a station to ingest from
+    Worker class for audio ingest. The worker acquires a station to ingest from
     the database, downloads the audio stream, and uploads it to S3. The
     database is used for synchronization, with each worker acquiring a lock on
-    the station is is working on. The worker will exit if the station is no longer
-    in the database, or if the station has failed too many times.
+    the station is is working on. The worker will exit if the station is no
+    longer in the database, or if the station has failed too many times.
     '''
 
     # pylint: disable-next=too-many-arguments

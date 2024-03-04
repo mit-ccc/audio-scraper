@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 
 '''
-Radio ingest worker entrypoint script
+Audio ingest worker entrypoint script
 '''
 
 import os
 import logging
 
-from radio_pool import RadioPool
+from pool import Pool
 
 
 logger = logging.getLogger(__name__)
@@ -43,5 +43,5 @@ if __name__ == '__main__':
         'chunk_error_threshold': int(os.environ.get('CHUNK_ERROR_THRESHOLD', 10)),
     }
 
-    with RadioPool(**args) as pool:
+    with Pool(**args) as pool:
         pool.run()

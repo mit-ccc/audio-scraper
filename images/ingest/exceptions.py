@@ -1,10 +1,10 @@
 '''
-Radio ingest exceptions
+Audio ingest exceptions
 '''
 
 
 class IngestException(Exception):
-    '''Base class for radio ingest exceptions'''
+    '''Base class for audio ingest exceptions'''
 
 
 class JobCancelledException(IngestException):
