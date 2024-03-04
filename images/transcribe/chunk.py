@@ -94,7 +94,7 @@ class Chunk:
         ret = {
             'bucket': self.bucket,
             'key': self.key,
-            'transcript': transcriber.process(data),
+            'results': transcriber.process(data),
         }
 
         out = json.dumps(ret)

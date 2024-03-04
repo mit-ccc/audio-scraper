@@ -5,8 +5,10 @@ Transcription worker entrypoint script
 '''
 
 import os
+import random
 import logging
 
+import numpy as np
 import torch
 
 import utils as ut
@@ -17,11 +19,36 @@ from transcriber import Transcriber
 logger = logging.getLogger(__name__)
 
 
+def log_setup():
+    logging.getLogger('boto3').setLevel(logging.WARNING)
+    logging.getLogger('botocore').setLevel(logging.WARNING)
+
+    try:
+        log_level = getattr(logging, os.environ['LOG_LEVEL'])
+    except KeyError:
+        log_level = logging.INFO
+    except AttributeError as exc:
+        raise AttributeError('Bad log level') from exc
+
+    logging.basicConfig(
+        level=log_level,
+        format='%(asctime)s %(name)-12s %(levelname)-8s %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+
+
+def seed_everything(seed):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+
+
 if __name__ == '__main__':
-    ut.log_setup()
+    log_setup()
 
     SEED = int(os.environ.get('SEED', '42'))
-    ut.seed_everything(SEED)
+    seed_everything(SEED)
 
     transcriber = Transcriber(
         whisper_version=os.environ.get('WHISPER_VERSION', 'base'),

@@ -2,9 +2,7 @@ import os
 import io
 import logging
 
-import torch
-
-import transformers as tf
+from faster_whisper import WhisperModel
 
 from pyannote.audio import Pipeline
 from pyannote.audio.pipelines import SpeakerDiarization
@@ -15,12 +13,32 @@ import utils as ut
 logger = logging.getLogger(__name__)
 
 
+def segment_to_json(segment):
+    segment_fields = ['start', 'end', 'text', 'avg_logprob', 'no_speech_prob']
+    word_fields = ['start', 'end', 'word', 'probability']
+
+    ret = {}
+    for field in segment_fields:
+        ret[field] = getattr(segment, field)
+
+    ret['words'] = []
+    for word in getattr(segment, 'words'):
+        ret['words'] += [{f: getattr(word, f) for f in word_fields}]
+
+    return ret
+
+
+def whisper_to_json(segments, info):
+    segments = [segment_to_json(seg) for seg in segments]
+    return dict(info._asdict(), segments=segments)
+
+
 class Transcriber:
     def __init__(self, whisper_version: str = 'base', device: str = 'cpu'):
-        self.asr = tf.pipeline(
-            'automatic-speech-recognition',
-            model=f"openai/whisper-{whisper_version}",
+        self.asr = WhisperModel(
+            whisper_version,
             device=device,
+            compute_type='int8',
         )
 
         self.diarizer = Pipeline.from_pretrained(
@@ -42,25 +60,15 @@ class Transcriber:
 
         return segments
 
+    def transcribe(self, data):
+        with io.BytesIO(data) as infile:
+            segments, info = self.asr.transcribe(infile, word_timestamps=True)
+            segments = list(segments)
+
+        return whisper_to_json(segments, info)
+
     def process(self, data):
-        sample_rate = ut.discover_sample_rate(data)
-        waveform = ut.load_audio(data, sample_rate=sample_rate)
-
-        ret = []
-        for segment in self.diarize(data):
-            audio_segment = ut.slice_audio(waveform, sample_rate, segment['start'], segment['end'])
-
-            with torch.inference_mode():
-                chunk_asr = self.asr(
-                    audio_segment,
-                    return_timestamps='word',
-                    return_language=True,
-                )
-
-            chunk_asr['speaker_id'] = segment['speaker_id']
-            chunk_asr['speaker_turn_start'] = segment['start']
-            chunk_asr['speaker_turn_end'] = segment['end']
-
-            ret.append(chunk_asr)
-
-        return ret
+        return {
+            'diarization': self.diarize(data),
+            'transcription': self.transcribe(data),
+        }
