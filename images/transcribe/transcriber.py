@@ -34,11 +34,12 @@ def whisper_to_json(segments, info):
 
 
 class Transcriber:
-    def __init__(self, whisper_version: str = 'base', device: str = 'cpu'):
+    def __init__(self, whisper_version: str = 'base', device: str = 'cpu',
+                 compute_type: str = 'default'):
         self.asr = WhisperModel(
             whisper_version,
             device=device,
-            compute_type='int8',
+            compute_type=compute_type,
         )
 
         self.diarizer = Pipeline.from_pretrained(
@@ -46,9 +47,15 @@ class Transcriber:
             use_auth_token=os.environ['HF_ACCESS_TOKEN'],
         )
 
-    def diarize(self, data):
-        with io.BytesIO(data) as infile:
-            res = self.diarizer(infile)
+    def process(self, data):
+        with io.BytesIO(data) as obj:
+            return {
+                'diarization': self.diarize(obj),
+                'transcription': self.transcribe(obj),
+            }
+
+    def diarize(self, obj):
+        res = self.diarizer(obj)
 
         segments = []
         for turn, _, speaker in res.itertracks(yield_label=True):
@@ -60,15 +67,8 @@ class Transcriber:
 
         return segments
 
-    def transcribe(self, data):
-        with io.BytesIO(data) as infile:
-            segments, info = self.asr.transcribe(infile, word_timestamps=True)
-            segments = list(segments)
+    def transcribe(self, obj):
+        segments, info = self.asr.transcribe(obj, word_timestamps=True)
+        segments = list(segments)
 
         return whisper_to_json(segments, info)
-
-    def process(self, data):
-        return {
-            'diarization': self.diarize(data),
-            'transcription': self.transcribe(data),
-        }

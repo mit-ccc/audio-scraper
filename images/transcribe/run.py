@@ -53,6 +53,7 @@ if __name__ == '__main__':
     transcriber = Transcriber(
         whisper_version=os.environ.get('WHISPER_VERSION', 'base'),
         device=('cuda' if torch.cuda.is_available() else 'cpu'),
+        compute_type=os.environ.get('COMPUTE_TYPE', 'default'),
     )
 
     args = {
