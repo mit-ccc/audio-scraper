@@ -5,7 +5,7 @@ ARG DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y apt-utils
 RUN apt-get install -y build-essential unixodbc unixodbc-dev odbc-postgresql \
-                       jq ca-certificates libxml2 libxml2-dev \
+                       jq ca-certificates libxml2 libxml2-dev wait-for-it \
                        libsndfile1 ffmpeg
 RUN apt-get clean
 

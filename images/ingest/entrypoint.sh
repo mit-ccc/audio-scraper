@@ -2,6 +2,8 @@
 
 set -Eeuo pipefail
 
+wait-for-it "$POSTGRES_HOST:$PGPORT" -- echo "Postgres is up"
+
 # Variables are assumed to be in the environment
 cat > ~/.odbc.ini << EOF
 [Database]
