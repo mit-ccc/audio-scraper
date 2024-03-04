@@ -28,7 +28,7 @@ services:
     networks:
       - stack
     depends_on:
-      postgres
+      - postgres
     environment:
       - POSTGRES_HOST=postgres
     restart: always
@@ -41,8 +41,7 @@ services:
     networks:
       - stack
     depends_on:
-      postgres:
-        condition: service_healthy
+      - postgres
     environment:
       - POSTGRES_HOST=postgres
     restart: always
