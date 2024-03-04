@@ -1,13 +1,18 @@
+import os
+import io
+import logging
+
 import torch
 
-from pyannote.audio.pipelines import SpeakerDiarization
-# import pyannote.core
-# import pyannote.audio
-# import pyannote.audio.pipelines
 import transformers as tf
-from pydub import AudioSegment
+
+from pyannote.audio import Pipeline
+from pyannote.audio.pipelines import SpeakerDiarization
 
 import utils as ut
+
+
+logger = logging.getLogger(__name__)
 
 
 class Transcriber:
@@ -18,35 +23,17 @@ class Transcriber:
             device=device,
         )
 
-        self.diarizer = SpeakerDiarization(segmentation='pyannote/segmentation')
+        self.diarizer = Pipeline.from_pretrained(
+            'pyannote/speaker-diarization-3.0',
+            use_auth_token=os.environ['HF_ACCESS_TOKEN'],
+        )
 
-    def process(self, chunk):
-        data = chunk.fetch()
+    def diarize(self, data):
+        with io.BytesIO(data) as infile:
+            res = self.diarizer(infile)
 
-        sample_rate = ut.discover_sample_rate(data)
-        data = ut.load_audio(data, sample_rate=sample_rate)
-
-        ret = []
-        for segment in self.diarize(data, sample_rate):
-            audio_segment = ut.slice_audio(data, sample_rate, segment['start'], segment['end'])
-
-            # Perform transcription
-            chunk_asr = self.transcribe(audio_segment)
-            chunk_asr['speaker_id'] = segment['speaker_id']
-            chunk_asr['speaker_turn_start'] = segment['start']
-            chunk_asr['speaker_turn_end'] = segment['end']
-
-            ret.append(chunk_asr)
-
-        return ret
-
-    def diarize(self, data, sample_rate):
-        # Perform speaker diarization
-        diarization_result = self.diarizer({'audio': data})
-
-        # Convert diarization result to segments
         segments = []
-        for turn, _, speaker in diarization_result.itertracks(yield_label=True):
+        for turn, _, speaker in res.itertracks(yield_label=True):
             segments.append({
                 'start': turn.start,
                 'end': turn.end,
@@ -55,12 +42,25 @@ class Transcriber:
 
         return segments
 
-    def transcribe(self, data):
-        # Convert data to AudioSegment for compatibility
-        audio_segment = AudioSegment(data).set_frame_rate(16000).set_channels(1).set_sample_width(2)
+    def process(self, data):
+        sample_rate = ut.discover_sample_rate(data)
+        waveform = ut.load_audio(data, sample_rate=sample_rate)
 
-        # Transcribe audio using Whisper
-        transcription = self.asr_pipeline(audio_segment)
+        ret = []
+        for segment in self.diarize(data):
+            audio_segment = ut.slice_audio(waveform, sample_rate, segment['start'], segment['end'])
 
-        # Convert transcription to desired format
-        return ut.whisper_to_json(transcription)
+            with torch.inference_mode():
+                chunk_asr = self.asr(
+                    audio_segment,
+                    return_timestamps='word',
+                    return_language=True,
+                )
+
+            chunk_asr['speaker_id'] = segment['speaker_id']
+            chunk_asr['speaker_turn_start'] = segment['start']
+            chunk_asr['speaker_turn_end'] = segment['end']
+
+            ret.append(chunk_asr)
+
+        return ret

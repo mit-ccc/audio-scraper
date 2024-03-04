@@ -2,10 +2,10 @@ from typing import Any, Union, Optional
 
 import os
 import io
+import json
 import random
 import logging
-import subprocess
-from urllib.parse import urlparse
+import subprocess as sp
 
 import numpy as np
 import ffmpeg
@@ -40,19 +40,12 @@ def seed_everything(seed):
     torch.cuda.manual_seed_all(seed)
 
 
-def parse_s3_url(url):
-    parsed = urlparse(url)
-    bucket = parsed.path.split('/')[1]
-    key = '/'.join(parsed.path.split('/')[2:])
-    return bucket, key
-
-
 def get_free_gpus(min_memory_mb=1024):
-    result = subprocess.run([
+    result = sp.run([
         'nvidia-smi',
         '--query-gpu=memory.free',
         '--format=csv'
-    ], check=True, stdout=subprocess.PIPE)
+    ], check=True, stdout=sp.PIPE)
     # command line output looks like:
     # $ nvidia-smi --query-gpu=memory.free --format=csv
     # memory.free [MiB]
@@ -78,13 +71,23 @@ def get_free_gpus(min_memory_mb=1024):
 # Loading audio
 #
 
+def probe(data, timeout=None):
+    args = ['ffprobe', '-show_format', '-show_streams',
+            '-of', 'json',
+            '-i', 'pipe:0']
+
+    with sp.Popen(args, stdin=sp.PIPE, stdout=sp.PIPE, stderr=sp.PIPE) as proc:
+        out, err = proc.communicate(input=data, timeout=timeout)
+
+        if proc.returncode != 0:
+            raise ffmpeg.Error('ffprobe', out, err)
+
+    return json.loads(out.decode('utf-8'))
+
+
 def discover_sample_rate(data):
     try:
-        probe_result = ffmpeg.probe(
-            'pipe:',
-            cmd=['ffmpeg', '-i', 'pipe:0'],
-            input=data
-        )
+        probe_result = probe(data)
 
         audio_stream = next((
             stream
@@ -136,27 +139,3 @@ def slice_audio(data, sr: int = 16000,
     end = int(sr * (end_time if end_time else data.shape[0]))
 
     return data[start:end]
-
-
-#
-# Reformatting whisper output
-#
-
-def segment_to_json(segment):
-    segment_fields = ['start', 'end', 'text', 'avg_log_prob', 'no_speech_prob']
-    word_fields = ['start', 'end', 'word', 'probability']
-
-    ret = {}
-    for field in segment_fields:
-        ret[field] = getattr(segment, field)
-
-    ret['words'] = []
-    for word in getattr(segment, 'words'):
-        ret['words'] += [{f: getattr(word, f) for f in word_fields}]
-
-    return ret
-
-
-def whisper_to_json(segments, info):
-    segments = [segment_to_json(seg) for seg in segments]
-    return dict(info, segments=segments)

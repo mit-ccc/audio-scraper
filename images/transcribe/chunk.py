@@ -7,10 +7,9 @@ import hashlib
 import logging
 import datetime
 import itertools as it
+from urllib.parse import urlparse
 
 import boto3
-
-import utils as ut
 
 
 logger = logging.getLogger(__name__)
@@ -33,7 +32,9 @@ class Chunk:
 
     @classmethod
     def from_s3_url(cls, url: str, cache_dir: Optional[str] = None):
-        bucket, key = ut.parse_s3_url(url)
+        parsed = urlparse(url)
+        assert parsed.scheme == 's3'
+        bucket, key = parsed.netloc, parsed.path[1:]
 
         return cls(bucket=bucket, key=key, cache_dir=cache_dir)
 
@@ -42,7 +43,7 @@ class Chunk:
         return 's3://' + self.bucket + '/' + self.key
 
     def _s3_fetch(self):
-        resp = self.client.get_object(
+        resp = self._client.get_object(
             Bucket=self.bucket,
             Key=self.key,
         )
@@ -89,13 +90,15 @@ class Chunk:
 
     def process(self, transcriber):
         data = self.fetch()
-        ret = transcriber.process(data)
 
-        ret['bucket'] = self.bucket
-        ret['key'] = self.key
+        ret = {
+            'bucket': self.bucket,
+            'key': self.key,
+            'transcript': transcriber.process(data),
+        }
 
         out = json.dumps(ret)
-        with io.BytesIO(out) as fobj:
+        with io.BytesIO(out.encode('utf-8')) as fobj:
             self._client.upload_fileobj(fobj, self.bucket, self.key + '.json')
 
     def __len__(self):

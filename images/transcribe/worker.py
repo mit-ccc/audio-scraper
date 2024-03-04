@@ -104,7 +104,7 @@ class TranscribeWorker:  # pylint: disable=too-many-instance-attributes
                         (
                             select
                                 j
-                            from app.jobs j
+                            from app.chunks j
                             where
                                 j.chunk_id > job_locks.chunk_id and
                                 (
