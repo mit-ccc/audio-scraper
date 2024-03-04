@@ -1,4 +1,4 @@
-FROM nvidia/cuda:12.3.2-runtime-ubuntu22.04
+FROM pytorch/pytorch:2.2.1-cuda12.1-cudnn8-runtime
 
 ARG AWS_CONTAINER_CREDENTIALS_RELATIVE_URI
 ARG DEBIAN_FRONTEND=noninteractive
@@ -6,17 +6,15 @@ ARG DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y apt-utils
 RUN apt-get install -y build-essential unixodbc unixodbc-dev odbc-postgresql \
                        jq ca-certificates libxml2 libxml2-dev \
-                       libsndfile1 ffmpeg \
-                       python3 python3-dev python3-pip python3.10
+                       libsndfile1 ffmpeg
 RUN apt-get clean
 
 WORKDIR /usr/src/app
-COPY requirements.txt /usr/src/app
-RUN pip3 install -U pip && pip3 install -r requirements.txt
-COPY . /usr/src/app
+COPY requirements.txt .
+RUN python3.10 -m pip install -U pip && python3.10 -m pip install -r requirements.txt
+COPY . .
 
-RUN chmod ug+x entrypoint.sh
-RUN chmod ug+x run.py
+RUN chmod ug+x entrypoint.sh run.py
 
 ENTRYPOINT ["./entrypoint.sh"]
 CMD ["./run.py"]

@@ -1,8 +1,7 @@
 pyodbc
 boto3
-pyannote-audio
 transformers
-pydub
 ffmpeg-python
 numpy
-torch==2.2.1
+pyannote-audio==3.0.0
+speechbrain==0.5.16
