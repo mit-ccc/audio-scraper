@@ -13,22 +13,26 @@ from pool import Pool
 logger = logging.getLogger(__name__)
 
 
-if __name__ == '__main__':
+def log_setup():
     logging.getLogger('boto3').setLevel(logging.WARNING)
     logging.getLogger('botocore').setLevel(logging.WARNING)
 
     try:
-        LOG_LEVEL = getattr(logging, os.environ['LOG_LEVEL'])
+        log_level = getattr(logging, os.environ['LOG_LEVEL'])
     except KeyError:
-        LOG_LEVEL = logging.INFO
+        log_level = logging.INFO
     except AttributeError as exc:
         raise AttributeError('Bad log level') from exc
 
     logging.basicConfig(
-        level=LOG_LEVEL,
+        level=log_level,
         format='%(asctime)s %(name)-12s %(levelname)-8s %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S'
     )
+
+
+if __name__ == '__main__':
+    log_setup()
 
     args = {
         's3_bucket': os.environ.get('S3_BUCKET'),

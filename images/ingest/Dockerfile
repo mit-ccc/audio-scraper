@@ -13,8 +13,7 @@ COPY requirements.txt /usr/src/app
 RUN pip3 install -U pip && pip3 install -r requirements.txt
 COPY . /usr/src/app
 
-RUN chmod ug+x entrypoint.sh
-RUN chmod ug+x run.py
+RUN chmod ug+x entrypoint.sh run.py
 
 ENTRYPOINT ["./entrypoint.sh"]
 CMD ["./run.py"]
