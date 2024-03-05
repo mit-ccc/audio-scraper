@@ -11,7 +11,6 @@ import logging
 import numpy as np
 import torch
 
-import utils as ut
 from worker import TranscribeWorker
 from transcriber import Transcriber
 
@@ -59,8 +58,8 @@ if __name__ == '__main__':
         'transcriber': transcriber,
         'dsn': os.getenv('DSN', 'Database'),
         'chunk_error_behavior': os.getenv('CHUNK_ERROR_BEHAVIOR', 'ignore'),
-        'chunk_error_threshold': int(os.getenv('CHUNK_ERROR_THRESHOLD', 10)),
-        'poll_interval': int(os.getenv('POLL_INTERVAL', 60)),
+        'chunk_error_threshold': int(os.getenv('CHUNK_ERROR_THRESHOLD', '10')),
+        'poll_interval': int(os.getenv('POLL_INTERVAL', '60')),
     }
 
     with TranscribeWorker(**args) as worker:

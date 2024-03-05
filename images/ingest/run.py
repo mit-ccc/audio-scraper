@@ -41,12 +41,12 @@ if __name__ == '__main__':
         'store_url': store_url,
 
         'dsn': os.getenv('DSN', 'Database'),
-        'n_tasks': int(os.getenv('N_TASKS', 10)),
-        'poll_interval': int(os.getenv('POLL_INTERVAL', 60)),
+        'n_tasks': int(os.getenv('N_TASKS', '10')),
+        'poll_interval': int(os.getenv('POLL_INTERVAL', '60')),
 
-        'chunk_size': int(os.getenv('CHUNK_SIZE', 5 * 2**20)),
+        'chunk_size': int(os.getenv('CHUNK_SIZE', str(5 * 2**20))),
         'chunk_error_behavior': os.getenv('CHUNK_ERROR_BEHAVIOR', 'ignore'),
-        'chunk_error_threshold': int(os.getenv('CHUNK_ERROR_THRESHOLD', 10)),
+        'chunk_error_threshold': int(os.getenv('CHUNK_ERROR_THRESHOLD', '10')),
     }
 
     with Pool(**args) as pool:

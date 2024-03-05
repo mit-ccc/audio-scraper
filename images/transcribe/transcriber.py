@@ -5,9 +5,6 @@ import logging
 from faster_whisper import WhisperModel
 
 from pyannote.audio import Pipeline
-from pyannote.audio.pipelines import SpeakerDiarization
-
-import utils as ut
 
 
 logger = logging.getLogger(__name__)
