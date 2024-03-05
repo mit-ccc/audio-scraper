@@ -18,9 +18,8 @@ def log_setup():
     logging.getLogger('botocore').setLevel(logging.WARNING)
 
     try:
-        log_level = getattr(logging, os.environ['LOG_LEVEL'])
-    except KeyError:
-        log_level = logging.INFO
+        log_level = os.getenv('LOG_LEVEL', 'INFO')
+        log_level = getattr(logging, log_level)
     except AttributeError as exc:
         raise AttributeError('Bad log level') from exc
 
@@ -34,17 +33,20 @@ def log_setup():
 if __name__ == '__main__':
     log_setup()
 
+    store_url = os.getenv('STORE_URL')
+    if store_url is None:
+        raise ValueError('Must provide STORE_URL environment variable')
+
     args = {
-        's3_bucket': os.environ.get('S3_BUCKET'),
-        's3_prefix': os.environ.get('S3_PREFIX', ''),
+        'store_url': store_url,
 
-        'dsn': os.environ.get('DSN', 'Database'),
-        'n_tasks': int(os.environ.get('N_TASKS', 10)),
-        'poll_interval': int(os.environ.get('POLL_INTERVAL', 60)),
+        'dsn': os.getenv('DSN', 'Database'),
+        'n_tasks': int(os.getenv('N_TASKS', 10)),
+        'poll_interval': int(os.getenv('POLL_INTERVAL', 60)),
 
-        'chunk_size': int(os.environ.get('CHUNK_SIZE', 5 * 2**20)),
-        'chunk_error_behavior': os.environ.get('CHUNK_ERROR_BEHAVIOR', 'ignore'),
-        'chunk_error_threshold': int(os.environ.get('CHUNK_ERROR_THRESHOLD', 10)),
+        'chunk_size': int(os.getenv('CHUNK_SIZE', 5 * 2**20)),
+        'chunk_error_behavior': os.getenv('CHUNK_ERROR_BEHAVIOR', 'ignore'),
+        'chunk_error_threshold': int(os.getenv('CHUNK_ERROR_THRESHOLD', 10)),
     }
 
     with Pool(**args) as pool:
