@@ -19,7 +19,7 @@ class Pool:
     respawned.
     '''
 
-    def __init__(self, n_tasks=10, poll_interval=60, **kwargs):
+    def __init__(self, n_tasks=10, poll_interval=10, **kwargs):
         super().__init__()
 
         self.n_tasks = n_tasks

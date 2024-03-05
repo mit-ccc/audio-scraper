@@ -7,7 +7,9 @@ import hashlib
 import logging
 import datetime
 import itertools as it
+
 from urllib.parse import urlparse
+from functools import cached_property
 
 import boto3
 
@@ -17,44 +19,88 @@ logger = logging.getLogger(__name__)
 
 class Chunk:
     '''
-    Encapsulates an S3 audio file for processing
+    Encapsulates an audio file for processing
     '''
 
-    def __init__(self, bucket: str, key: str, cache_dir: Optional[str] = None):
+    def __init__(self, url: str, cache_dir: Optional[str] = None):
         super().__init__()
 
-        self.bucket = bucket
-        self.key = key
-        self.cache_dir = cache_dir
+        self.url = url
 
-        self._session = boto3.Session()
-        self._client = self._session.client('s3')
+        if self.storage_mode == 's3':
+            self._client = boto3.client('s3')
+            self.cache_dir = cache_dir
+        else:
+            self._client = None
+            self.cache_dir = None
 
-    @classmethod
-    def from_s3_url(cls, url: str, cache_dir: Optional[str] = None):
-        parsed = urlparse(url)
-        assert parsed.scheme == 's3'
-        bucket, key = parsed.netloc, parsed.path[1:]
+            if cache_dir is not None:
+                logger.warning('Ignoring cache_dir with local files')
 
-        return cls(bucket=bucket, key=key, cache_dir=cache_dir)
+    @cached_property
+    def _url_parsed(self):
+        return urlparse(self.url)
 
-    @property
-    def s3_url(self):
-        return 's3://' + self.bucket + '/' + self.key
+    @cached_property
+    def storage_mode(self):
+        mode = self._url_parsed.scheme.lower()
 
-    def _s3_fetch(self):
-        resp = self._client.get_object(
-            Bucket=self.bucket,
-            Key=self.key,
-        )
+        if mode not in ('s3', 'file'):
+            raise ValueError('Bad storage URL format')
+
+        if mode == 'file' and self._url_parsed.netloc != '':
+            raise ValueError('Bad file URL - has netloc')
+
+        return mode
+
+    def _read_data_s3(self):
+        bucket = self._url_parsed.netloc
+
+        key = self._url_parsed.path
+        if key.startswith('/'):
+            key = key[1:]
+
+        resp = self._client.get_object(Bucket=bucket, Key=key)
 
         return resp['Body'].read()
+
+    def _read_data_local(self):
+        with open(self._url_parsed.path, 'rb') as fobj:
+            return fobj.read()
+
+    def _read_data(self):
+        if self.storage_mode == 's3':
+            return self._read_data_s3()
+
+        return self._read_data_local()
+
+    def _write_results_s3(self, results):
+        bucket = self._url_parsed.netloc
+
+        key = self._url_parsed.path
+        if key.startswith('/'):
+            key = key[1:]
+
+        with io.BytesIO(results.encode('utf-8')) as fobj:
+            self._client.upload_fileobj(fobj, bucket, key + '.json')
+
+    def _write_results_local(self, results):
+        with open(self._url_parsed.path + '.json', 'wt', encoding='utf-8') as fobj:
+            fobj.write(results)
+
+    def _write_results(self, results):
+        results = json.dumps(results)
+
+        if self.storage_mode == 's3':
+            self._write_results_s3(results)
+        else:
+            self._write_results_local(results)
 
     def fetch(self):
         if self._is_cached:
             return self._read_from_cache()
 
-        data = self._s3_fetch()
+        data = self._read_data()
 
         if self.cache_dir is not None:
             self._write_to_cache(data)
@@ -63,7 +109,15 @@ class Chunk:
 
     @property
     def _cache_path(self):
-        val = (self.bucket, self.key)
+        assert self.storage_mode == 's3'
+
+        bucket = self._url_parsed.netloc
+
+        key = self._url_parsed.path
+        if key.startswith('/'):
+            key = key[1:]
+
+        val = (bucket, key)
         fname = hashlib.sha1(str(val).encode('utf-8')).hexdigest()
 
         return os.path.join(self.cache_dir, fname)
@@ -92,84 +146,17 @@ class Chunk:
         data = self.fetch()
 
         ret = {
-            'bucket': self.bucket,
-            'key': self.key,
+            'url': self.url,
             'results': transcriber.process(data),
         }
 
-        out = json.dumps(ret)
-        with io.BytesIO(out.encode('utf-8')) as fobj:
-            self._client.upload_fileobj(fobj, self.bucket, self.key + '.json')
+        self._write_results(ret)
 
     def __len__(self):
         return 1
 
     def __iter__(self):
         yield {
-            'bucket': self.bucket,
-            'key': self.key,
+            'url': self.url,
             'data': self.fetch(),
         }
-
-
-# class ChunkSet:
-#     '''
-#     Assemble all chunks posted in the last 24 hours not yet processed.
-#     '''
-#
-#     def __init__(self, bucket: str, prefix: Optional[str] = None,
-#                  cache_dir: Optional[str] = None,
-#                  since: Optional[datetime.datetime] = None):
-#         super().__init__()
-#
-#         self.bucket = bucket
-#         self.prefix = prefix
-#         self.cache_dir = cache_dir
-#
-#         if since is not None:
-#             self.since = since
-#         else:
-#             # default to 24 hours ago
-#             now = datetime.datetime.now(datetime.timezone.utc)
-#             self.since = now - datetime.timedelta(days=1)
-#
-#         if self.cache_dir:
-#             os.makedirs(self.cache_dir, exist_ok=True)
-#
-#         self._session = boto3.Session()
-#         self._client = self._session.client('s3')
-#
-#         self._chunks = self._get_unprocessed_chunks()
-#
-#     def _get_recent_files(self):
-#         objects = self._client.list_objects_v2(
-#             Bucket=self.bucket,
-#             Prefix=self.prefix
-#         ).get('Contents', [])
-#
-#         recent_objects = [
-#             obj
-#             for obj in objects
-#             if obj['LastModified'] > self.since
-#         ]
-#
-#         return [obj['Key'] for obj in recent_objects]
-#
-#     def _get_unprocessed_chunks(self):
-#         files = self._get_recent_files()
-#
-#         chunks = [f for f in files if f.endswith('.raw')]
-#         unprocessed = [c for c in chunks if c + '.json' not in files]
-#
-#         return [
-#             Chunk(bucket=self.bucket, key=c, client=self._client,
-#                   cache_dir=self.cache_dir)
-#
-#             for c in unprocessed
-#         ]
-#
-#     def __len__(self):
-#         return len(self._chunks)
-#
-#     def __iter__(self):
-#         yield from it.chain(*self._chunks)

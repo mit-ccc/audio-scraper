@@ -11,6 +11,9 @@ import time
 import random
 import logging
 
+from functools import cached_property
+from urllib.parse import urlparse
+
 import boto3
 import pyodbc
 
@@ -45,9 +48,9 @@ class Worker:  # pylint: disable=too-many-instance-attributes
     '''
 
     # pylint: disable-next=too-many-arguments
-    def __init__(self, s3_bucket, s3_prefix='', dsn='Database',
+    def __init__(self, store_url, dsn='Database',
                  chunk_error_behavior='ignore', chunk_error_threshold=10,
-                 chunk_size=5*2**20, poll_interval=60):
+                 chunk_size=5*2**20, poll_interval=10):
         if chunk_error_behavior not in ('exit', 'ignore'):
             raise ValueError("chunk_error_behavior must be 'exit' or 'ignore'")
 
@@ -55,8 +58,7 @@ class Worker:  # pylint: disable=too-many-instance-attributes
 
         # No AWS creds - we assume they're in the environment
         self.dsn = dsn
-        self.s3_bucket = s3_bucket
-        self.s3_prefix = s3_prefix
+        self.store_url = store_url
         self.chunk_error_behavior = chunk_error_behavior
         self.chunk_error_threshold = chunk_error_threshold
         self.chunk_size = chunk_size
@@ -69,11 +71,63 @@ class Worker:  # pylint: disable=too-many-instance-attributes
         self.station_id = None
         self.stream_url = None
 
+        if self.storage_mode == 's3':
+            self._client = boto3.client('s3')
+        else:
+            self._client = None
+
+    @cached_property
+    def _store_url_parsed(self):
+        return urlparse(self.store_url)
+
+    @cached_property
+    def storage_mode(self):
+        mode = self._store_url_parsed.scheme.lower()
+
+        if mode not in ('s3', 'file'):
+            raise ValueError('Bad storage URL format')
+
+        if mode == 'file' and self._store_url_parsed.netloc != '':
+            raise ValueError('Bad file URL - has netloc')
+
+        return mode
+
     def __enter__(self):
         return self
 
     def __exit__(self, exc_type, exc_val, exc_traceback):
         self.close()
+
+    def write_chunk(self, chunk, key=None):
+        assert self.station is not None
+
+        if key is None:
+            key = str(int(time.time() * 1000000))
+        key = os.path.join(self.station, key)
+
+        if self.storage_mode == 's3':
+            s3_bucket = self._store_url_parsed.netloc
+
+            s3_prefix = self._store_url_parsed.path
+            if s3_prefix.startswith('/'):
+                s3_prefix = s3_prefix[1:]
+
+            s3_key = os.path.join(s3_prefix, key)
+
+            with io.BytesIO(chunk) as fobj:
+                self._client.upload_fileobj(fobj, s3_bucket, s3_key)
+        else:  # self.storage_mode == 'file'
+            path = self._store_url_parsed.path
+            path = os.path.join(path, key)
+
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, 'wb') as fobj:
+                fobj.write(chunk)
+
+        out_url = os.path.join(self.store_url, key)
+        logger.info('Successfully fetched and saved %s', out_url)
+
+        return out_url
 
     def lock_task(self):
         '''
@@ -275,7 +329,6 @@ class Worker:  # pylint: disable=too-many-instance-attributes
             'chunk_size': self.chunk_size
         }
 
-        client = boto3.client('s3')
         stream, itr = None, None
 
         while True:
@@ -299,18 +352,7 @@ class Worker:  # pylint: disable=too-many-instance-attributes
                     itr = iter(stream)
 
                 chunk = next(itr)
-
-                # Put the chunk into S3
-                key = os.path.join(self.s3_prefix, self.station,
-                                   str(int(time.time() * 1000000)))
-
-                with io.BytesIO(chunk) as fobj:
-                    client.upload_fileobj(fobj, self.s3_bucket, key)
-
-                # Log the success
-                msg = 'Successfully fetched and uploaded %s'
-                s3_url = 's3://' + self.s3_bucket + '/' + key
-                logger.info(msg, s3_url)
+                out_url = self.write_chunk(chunk)
             except Exception as exc:  # pylint: disable=broad-except
                 with self.db.cursor() as cur:
                     # log the failure; this is concurency-safe because
@@ -336,10 +378,10 @@ class Worker:  # pylint: disable=too-many-instance-attributes
                 with self.db.cursor() as cur:
                     cur.execute('''
                     insert into app.chunks
-                        (station_id, s3_url)
+                        (station_id, url)
                     values
                         (?, ?);
-                    ''', (self.station_id, s3_url))
+                    ''', (self.station_id, out_url))
             finally:
                 gc.collect()
 

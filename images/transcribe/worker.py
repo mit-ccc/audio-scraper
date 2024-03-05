@@ -16,7 +16,7 @@ class TranscribeWorker:  # pylint: disable=too-many-instance-attributes
     # pylint: disable-next=too-many-arguments
     def __init__(self, transcriber, dsn='Database',
                  chunk_error_behavior='ignore', chunk_error_threshold=10,
-                 poll_interval=60):
+                 poll_interval=10):
         super().__init__()
 
         self.transcriber = transcriber
@@ -31,7 +31,7 @@ class TranscribeWorker:  # pylint: disable=too-many-instance-attributes
         self.db.autocommit = True
 
         self.chunk_id = None
-        self.s3_url = None
+        self.url = None
 
     def __enter__(self):
         return self
@@ -56,7 +56,7 @@ class TranscribeWorker:  # pylint: disable=too-many-instance-attributes
             pass
 
         self.chunk_id = None
-        self.s3_url = None
+        self.url = None
 
     def lock_task(self):
         '''
@@ -149,7 +149,7 @@ class TranscribeWorker:  # pylint: disable=too-many-instance-attributes
     def acquire_task(self):
         '''
         Acquire a task (i.e., chunk to work on) from the database, blocking
-        until one is available. Configure the chunk ID and s3 URL on the
+        until one is available. Configure the chunk ID and URL on the
         worker from the acquired task.
         '''
 
@@ -172,14 +172,14 @@ class TranscribeWorker:  # pylint: disable=too-many-instance-attributes
         with self.db.cursor() as cur:
             cur.execute('''
             select
-                s3_url
+                url
             from app.chunks
             where
                 chunk_id = ?;
             ''', (self.chunk_id,))
 
             res = cur.fetchone()
-            self.s3_url = res[0]
+            self.url = res[0]
 
         return self
 
@@ -192,12 +192,12 @@ class TranscribeWorker:  # pylint: disable=too-many-instance-attributes
             self.acquire_task()
 
             msg = "Began processing chunk_id %s from %s"
-            logger.info(msg, self.chunk_id, self.s3_url)
+            logger.info(msg, self.chunk_id, self.url)
 
             try:
-                chunk = Chunk.from_s3_url(self.s3_url)
+                chunk = Chunk(self.url)
                 chunk.process(self.transcriber)
-                logger.info('Successfully transcribed %s', self.s3_url)
+                logger.info('Successfully transcribed %s', self.url)
             except Exception:  # pylint: disable=broad-except
                 with self.db.cursor() as cur:
                     # log the failure; this is concurency-safe because

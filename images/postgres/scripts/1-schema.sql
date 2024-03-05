@@ -123,7 +123,7 @@ create table app.chunks
                on delete restrict,
 
     create_dt timestamptz not null default now(),
-    s3_url text not null,
+    url text not null,
     error_count integer not null default 0,
     last_error text
 );
