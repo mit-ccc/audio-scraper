@@ -360,7 +360,7 @@ class Worker:  # pylint: disable=too-many-instance-attributes
                     chunk = next(itr)
                     end_time = time.time()
 
-                    out_url = self.write_chunk(chunk, start, end)
+                    out_url = self.write_chunk(chunk, start_time, end_time)
                 except Exception as exc:  # pylint: disable=broad-except
                     with self.db.cursor() as cur:
                         # log the failure; this is concurency-safe because
