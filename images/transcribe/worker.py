@@ -70,8 +70,10 @@ class TranscribeWorker:  # pylint: disable=too-many-instance-attributes
             pass
 
         self.chunk_id = None
+
         self.url = None
         self.lang = None
+        self.station = None
 
     def lock_task(self):
         '''
@@ -188,7 +190,8 @@ class TranscribeWorker:  # pylint: disable=too-many-instance-attributes
             cur.execute('''
             select
                 c.url,
-                s.lang
+                s.lang,
+                s.name
             from app.chunks c
                 inner join data.station s using(station_id)
             where
@@ -198,6 +201,7 @@ class TranscribeWorker:  # pylint: disable=too-many-instance-attributes
             res = cur.fetchone()
             self.url = res[0]
             self.lang = res[1]
+            self.station = res[2]
 
         return self
 
@@ -213,7 +217,11 @@ class TranscribeWorker:  # pylint: disable=too-many-instance-attributes
             logger.info(msg, self.chunk_id, self.url)
 
             try:
-                chunk = Chunk(url=self.url, lang=self.lang)
+                chunk = Chunk(
+                    url=self.url,
+                    station=self.station,
+                    lang=self.lang
+                )
 
                 data = chunk.fetch()
                 results = self.transcriber.process(data, lang=chunk.lang)

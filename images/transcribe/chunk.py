@@ -20,11 +20,13 @@ class Chunk:
     Encapsulates an audio file for processing
     '''
 
-    def __init__(self, url: str, lang: Optional[str] = None,
+    def __init__(self, url: str, station: str,
+                 lang: Optional[str] = None,
                  cache_dir: Optional[str] = None):
         super().__init__()
 
         self.url = url
+        self.station = station
         self.lang = lang
 
         if self.storage_mode == 's3':
@@ -126,6 +128,7 @@ class Chunk:
     def write_results(self, results):
         ret = json.dumps({
             'url': self.url,
+            'station': self.station,
             'lang': self.lang,
             'results': results
         })
