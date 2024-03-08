@@ -22,9 +22,9 @@ audioread==3.0.1
     # via librosa
 av==11.0.0
     # via faster-whisper
-boto3==1.34.54
+boto3==1.34.58
     # via -r requirements.in
-botocore==1.34.54
+botocore==1.34.58
     # via
     #   boto3
     #   s3transfer
@@ -58,12 +58,14 @@ einops==0.7.0
     # via pyannote-audio
 faster-whisper==1.0.1
     # via -r requirements.in
+ffmpeg-python==0.2.0
+    # via -r requirements.in
 filelock==3.13.1
     # via
     #   huggingface-hub
     #   pyannote-pipeline
     #   torch
-flatbuffers==23.5.26
+flatbuffers==24.3.7
     # via onnxruntime
 fonttools==4.49.0
     # via matplotlib
@@ -77,7 +79,9 @@ fsspec[http]==2024.2.0
     #   lightning
     #   pytorch-lightning
     #   torch
-huggingface-hub==0.21.3
+future==1.0.0
+    # via ffmpeg-python
+huggingface-hub==0.21.4
     # via
     #   faster-whisper
     #   pyannote-audio
@@ -110,7 +114,7 @@ lazy-loader==0.3
     # via librosa
 librosa==0.10.1
     # via torch-audiomentations
-lightning==2.2.0.post0
+lightning==2.2.1
     # via pyannote-audio
 lightning-utilities==0.10.1
     # via
@@ -227,14 +231,14 @@ pygments==2.17.2
     # via rich
 pyodbc==5.1.0
     # via -r requirements.in
-pyparsing==3.1.1
+pyparsing==3.1.2
     # via matplotlib
 python-dateutil==2.9.0.post0
     # via
     #   botocore
     #   matplotlib
     #   pandas
-pytorch-lightning==2.2.0.post0
+pytorch-lightning==2.2.1
     # via lightning
 pytorch-metric-learning==2.4.1
     # via pyannote-audio
@@ -298,7 +302,7 @@ speechbrain==0.5.16
     # via
     #   -r requirements.in
     #   pyannote-audio
-sqlalchemy==2.0.27
+sqlalchemy==2.0.28
     # via
     #   alembic
     #   optuna
