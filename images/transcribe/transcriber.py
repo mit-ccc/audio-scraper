@@ -115,11 +115,11 @@ class Transcriber:
             use_auth_token=os.environ['HF_ACCESS_TOKEN'],
         )
 
-    def process(self, data):
+    def process(self, data, lang=None):
         sample_rate = discover_sample_rate(data)
         data = load_audio(data, sample_rate=sample_rate)
 
-        transcribed = self.transcribe(data)
+        transcribed = self.transcribe(data, lang=lang)
 
         diarized = self.diarize({
             'waveform': torch.from_numpy(data[None, :]),
@@ -144,8 +144,9 @@ class Transcriber:
 
         return segments
 
-    def transcribe(self, obj):
-        segments, info = self.asr.transcribe(obj, word_timestamps=True)
+    def transcribe(self, obj, lang=None):
+        segments, info = self.asr.transcribe(obj, word_timestamps=True,
+                                             language=lang)
         segments = list(segments)
 
         return whisper_to_json(segments, info)

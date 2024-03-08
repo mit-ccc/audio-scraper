@@ -20,10 +20,12 @@ class Chunk:
     Encapsulates an audio file for processing
     '''
 
-    def __init__(self, url: str, cache_dir: Optional[str] = None):
+    def __init__(self, url: str, lang: Optional[str] = None,
+                 cache_dir: Optional[str] = None):
         super().__init__()
 
         self.url = url
+        self.lang = lang
 
         if self.storage_mode == 's3':
             self._client = boto3.client('s3')
@@ -145,7 +147,7 @@ class Chunk:
 
         ret = {
             'url': self.url,
-            'results': transcriber.process(data),
+            'results': transcriber.process(data, lang=self.lang),
         }
 
         self._write_results(ret)

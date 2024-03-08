@@ -12,7 +12,8 @@ create table data.station
 
     name text not null unique,
     stream_url text not null,
-    auto_ingest bool not null default false
+    auto_ingest bool not null default false,
+    lang char(2)
 );
 
 create index station_name on data.station (name);
