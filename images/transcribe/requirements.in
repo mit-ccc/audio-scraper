@@ -2,7 +2,5 @@ pyodbc
 boto3
 numpy
 ffmpeg-python
-faster-whisper
 torch==2.2.1
-pyannote-audio==3.0.0
-speechbrain==0.5.16
+whisperx @ git+https://github.com/m-bain/whisperX.git@78dcfaa
