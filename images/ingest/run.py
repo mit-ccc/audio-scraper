@@ -49,7 +49,7 @@ if __name__ == '__main__':
 
         'dsn': os.getenv('DSN', 'Database'),
         'n_tasks': int(os.getenv('N_TASKS', '10')),
-        'poll_interval': int(os.getenv('POLL_INTERVAL', '60')),
+        'poll_interval': float(os.getenv('POLL_INTERVAL', '60')),
 
         'chunk_size': int(os.getenv('CHUNK_SIZE', str(5 * 2**20))),
         'chunk_error_threshold': thresh,
