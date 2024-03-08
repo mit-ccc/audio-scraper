@@ -37,6 +37,13 @@ if __name__ == '__main__':
     if store_url is None:
         raise ValueError('Must provide STORE_URL environment variable')
 
+    thresh = os.getenv('CHUNK_ERROR_THRESHOLD', None)
+    if thresh == 'None' or thresh == 'null' or int(thresh) < 0:
+        thresh = None
+    else:
+        thresh = int(thresh)
+    assert thresh is None or thresh > 0
+
     args = {
         'store_url': store_url,
 
@@ -45,8 +52,7 @@ if __name__ == '__main__':
         'poll_interval': int(os.getenv('POLL_INTERVAL', '60')),
 
         'chunk_size': int(os.getenv('CHUNK_SIZE', str(5 * 2**20))),
-        'chunk_error_behavior': os.getenv('CHUNK_ERROR_BEHAVIOR', 'ignore'),
-        'chunk_error_threshold': int(os.getenv('CHUNK_ERROR_THRESHOLD', '10')),
+        'chunk_error_threshold': thresh,
     }
 
     with Pool(**args) as pool:

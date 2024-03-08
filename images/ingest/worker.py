@@ -3,6 +3,8 @@ This file is the main file for the audio worker. It downloads the audio stream
 from the remote (e.g., radio station site) and uploads it to S3.
 '''
 
+from typing import Optional
+
 import gc
 import io
 import os
@@ -48,18 +50,14 @@ class Worker:  # pylint: disable=too-many-instance-attributes
     '''
 
     # pylint: disable-next=too-many-arguments
-    def __init__(self, store_url, dsn='Database',
-                 chunk_error_behavior='ignore', chunk_error_threshold=10,
-                 chunk_size=5*2**20, poll_interval=10):
-        if chunk_error_behavior not in ('exit', 'ignore'):
-            raise ValueError("chunk_error_behavior must be 'exit' or 'ignore'")
-
+    def __init__(self, store_url: str, dsn: str = 'Database',
+                 chunk_error_threshold: Optional[int] = None,
+                 chunk_size: int = 5*2**20, poll_interval: float = 10.0):
         super().__init__()
 
         # No AWS creds - we assume they're in the environment
         self.dsn = dsn
         self.store_url = store_url
-        self.chunk_error_behavior = chunk_error_behavior
         self.chunk_error_threshold = chunk_error_threshold
         self.chunk_size = chunk_size
         self.poll_interval = poll_interval
@@ -266,6 +264,9 @@ class Worker:  # pylint: disable=too-many-instance-attributes
                     from app.ingest_jobs
                     where
                         station_id = ? and
+
+                        -- the exists() will return false if ? is null
+                        -- which happens if self.chunk_error_threshold is None
                         error_count >= ?
                 ) as failed;
             ''', params)
@@ -321,73 +322,72 @@ class Worker:  # pylint: disable=too-many-instance-attributes
 
         self.acquire_task()
 
-        msg = "Began ingesting station_id %s from %s"
-        logger.info(msg, self.station_id, self.stream_url)
+        logger.info(
+            "Began ingesting station_id %s from %s",
+            self.station_id, self.stream_url
+        )
 
-        args = {
-            'url': self.stream_url,
-            'chunk_size': self.chunk_size
-        }
+        try:
+            stream, itr = None, None
 
-        stream, itr = None, None
+            while True:
+                conds = self.get_stop_conditions()
 
-        while True:
-            conds = self.get_stop_conditions()
+                if conds['deleted']:
+                    msg = "Job %s cancelled"
+                    vals = (self.station_id,)
+                    raise ex.JobCancelledException(msg % vals)
 
-            if conds['deleted']:
-                msg = "Job %s cancelled"
-                vals = (self.station_id,)
-                raise ex.JobCancelledException(msg % vals)
-
-            if conds['failed']:
-                msg = "Job %s had too many failures"
-                vals = (self.station_id,)
-                raise ex.TooManyFailuresException(msg % vals)
-
-            try:
-                # do this rather than "for chunk in stream" so that
-                # we can get everything inside the try block
-                if stream is None:
-                    stream = AudioStream(**args)
-                    itr = iter(stream)
-
-                chunk = next(itr)
-                out_url = self.write_chunk(chunk)
-            except Exception as exc:  # pylint: disable=broad-except
-                with self.db.cursor() as cur:
-                    # log the failure; this is concurency-safe because
-                    # we have the lock on this station_id
-                    cur.execute('''
-                    update app.ingest_jobs
-                    set
-                        error_count = error_count + 1,
-                        last_error = ?
-                    where
-                        station_id = ?;
-                    ''', (str(sys.exc_info()), self.station_id))
-
-                if isinstance(exc, StopIteration):
-                    raise  # no point continuing after we hit this
-
-                if self.chunk_error_behavior == 'exit':
-                    raise
-
-                logger.exception('Chunk failed; ignoring')
-            else:
-                # log the success
-                with self.db.cursor() as cur:
-                    cur.execute('''
-                    insert into app.chunks
-                        (station_id, url)
-                    values
-                        (?, ?);
-                    ''', (self.station_id, out_url))
-            finally:
-                gc.collect()
+                if conds['failed']:
+                    msg = "Job %s had too many failures"
+                    vals = (self.station_id,)
+                    raise ex.TooManyFailuresException(msg % vals)
 
                 try:
-                    stream.close()
-                except Exception:  # pylint: disable=broad-except
-                    pass
+                    # do this rather than "for chunk in stream" so that
+                    # we can get everything inside the try block
+                    if stream is None:
+                        stream = AudioStream(
+                            url=self.stream_url,
+                            chunk_size=self.chunk_size,
+                        )
+
+                        itr = iter(stream)
+
+                    chunk = next(itr)
+                    out_url = self.write_chunk(chunk)
+                except Exception as exc:  # pylint: disable=broad-except
+                    with self.db.cursor() as cur:
+                        # log the failure; this is concurency-safe because
+                        # we have the lock on this station_id
+                        cur.execute('''
+                        update app.ingest_jobs
+                        set
+                            error_count = error_count + 1,
+                            last_error = ?
+                        where
+                            station_id = ?;
+                        ''', (str(sys.exc_info()), self.station_id))
+
+                    if isinstance(exc, StopIteration):
+                        raise  # no point continuing after we hit this
+
+                    logger.exception('Chunk failed')
+                else:
+                    # log the success
+                    with self.db.cursor() as cur:
+                        cur.execute('''
+                        insert into app.chunks
+                            (station_id, url)
+                        values
+                            (?, ?);
+                        ''', (self.station_id, out_url))
+                finally:
+                    gc.collect()
+        finally:
+            try:
+                stream.close()
+            except Exception:  # pylint: disable=broad-except
+                pass
 
         return self
