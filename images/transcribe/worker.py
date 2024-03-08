@@ -1,3 +1,5 @@
+from typing import Optional
+
 import gc
 import sys
 import time
@@ -7,6 +9,7 @@ import logging
 import pyodbc
 
 from chunk import Chunk
+from transcriber import Transcriber
 
 
 logger = logging.getLogger(__name__)
@@ -14,12 +17,22 @@ logger = logging.getLogger(__name__)
 
 class TranscribeWorker:  # pylint: disable=too-many-instance-attributes
     # pylint: disable-next=too-many-arguments
-    def __init__(self, transcriber, dsn='Database',
-                 chunk_error_behavior='ignore', chunk_error_threshold=10,
-                 poll_interval=10):
+    def __init__(self, whisper_version: str = 'base',
+                 compute_type: str = 'float32',
+                 device: Optional[str] = None,
+                 hf_token: Optional[str] = None,
+                 dsn: str = 'Database',
+                 chunk_error_behavior: str = 'ignore',
+                 chunk_error_threshold: int = 10,
+                 poll_interval: int = 10):
         super().__init__()
 
-        self.transcriber = transcriber
+        self.transcriber = Transcriber(
+            whisper_version=whisper_version,
+            device=device,
+            compute_type=compute_type,
+            hf_token=hf_token,
+        )
 
         # No AWS creds - we assume they're in the environment
         self.dsn = dsn
@@ -201,7 +214,11 @@ class TranscribeWorker:  # pylint: disable=too-many-instance-attributes
 
             try:
                 chunk = Chunk(url=self.url, lang=self.lang)
-                chunk.process(self.transcriber)
+
+                data = chunk.fetch()
+                results = self.transcriber.process(data, lang=chunk.lang)
+                chunk.write_results(results)
+
                 logger.info('Successfully transcribed %s', self.url)
             except Exception:  # pylint: disable=broad-except
                 with self.db.cursor() as cur:

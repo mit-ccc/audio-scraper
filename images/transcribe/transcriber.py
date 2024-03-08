@@ -1,7 +1,8 @@
+from typing import Optional
+
 import os
 import logging
 
-import torch
 import whisperx
 
 from load_audio import load_audio
@@ -11,18 +12,36 @@ logger = logging.getLogger(__name__)
 
 
 class Transcriber:
-    def __init__(self, whisper_version: str = 'base', device: str = 'cpu',
-                 compute_type: str = 'default', batch_size: int = 1):
+    def __init__(self, whisper_version: str = 'base',
+                 compute_type: str = 'default',
+                 batch_size: int = 1,
+                 device: Optional[str] = None,
+                 hf_token: Optional[str] = None):
         self.whisper_version = whisper_version
-        self.device = device
         self.compute_type = compute_type
         self.batch_size = batch_size
 
-        self.asr = whisperx.load_model(whisper_version, device,
-                                       compute_type=compute_type)
+        if device is None:
+            device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        self.device = device
+
+        if ':' in self.device:
+            dev, ind = self.device.split(':')
+            ind = int(ind)
+        else:
+            dev, ind = self.device, 0
+
+        self.asr = whisperx.load_model(
+            whisper_arch=self.whisper_version,
+            compute_type=self.compute_type,
+
+            device=dev,
+            device_index=ind,
+        )
 
         self.diarizer = whisperx.DiarizationPipeline(
-            use_auth_token=os.environ['HF_ACCESS_TOKEN'],
+            model_name='pyannote/speaker-diarization-3.1',
+            use_auth_token=hf_token,
             device=device,
         )
 
@@ -43,7 +62,7 @@ class Transcriber:
         return self.align[1:]
 
     def process(self, data, lang=None):
-        data = load_audio(data)
+        data = load_audio(data)['waveform']
 
         result = self.asr.transcribe(
             data,

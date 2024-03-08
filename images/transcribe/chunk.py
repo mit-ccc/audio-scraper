@@ -74,39 +74,6 @@ class Chunk:
 
         return self._read_data_local()
 
-    def _write_results_s3(self, results):
-        bucket = self._url_parsed.netloc
-
-        key = self._url_parsed.path
-        if key.startswith('/'):
-            key = key[1:]
-
-        with io.BytesIO(results.encode('utf-8')) as fobj:
-            self._client.upload_fileobj(fobj, bucket, key + '.json')
-
-    def _write_results_local(self, results):
-        with open(self._url_parsed.path + '.json', 'wt', encoding='utf-8') as fobj:
-            fobj.write(results)
-
-    def _write_results(self, results):
-        results = json.dumps(results)
-
-        if self.storage_mode == 's3':
-            self._write_results_s3(results)
-        else:
-            self._write_results_local(results)
-
-    def fetch(self):
-        if self._is_cached:
-            return self._read_from_cache()
-
-        data = self._read_data()
-
-        if self.cache_dir is not None:
-            self._write_to_cache(data)
-
-        return data
-
     @property
     def _cache_path(self):
         assert self.storage_mode == 's3'
@@ -142,15 +109,42 @@ class Chunk:
         with open(self._cache_path, 'rb') as fobj:
             return fobj.read()
 
-    def process(self, transcriber):
-        data = self.fetch()
+    def _write_results_s3(self, results):
+        bucket = self._url_parsed.netloc
 
-        ret = {
+        key = self._url_parsed.path
+        if key.startswith('/'):
+            key = key[1:]
+
+        with io.BytesIO(results.encode('utf-8')) as fobj:
+            self._client.upload_fileobj(fobj, bucket, key + '.json')
+
+    def _write_results_local(self, results):
+        with open(self._url_parsed.path + '.json', 'wt', encoding='utf-8') as fobj:
+            fobj.write(results)
+
+    def write_results(self, results):
+        ret = json.dumps({
             'url': self.url,
-            'results': transcriber.process(data, lang=self.lang),
-        }
+            'lang': self.lang,
+            'results': results
+        })
 
-        self._write_results(ret)
+        if self.storage_mode == 's3':
+            self._write_results_s3(ret)
+        else:
+            self._write_results_local(ret)
+
+    def fetch(self):
+        if self._is_cached:
+            return self._read_from_cache()
+
+        data = self._read_data()
+
+        if self.cache_dir is not None:
+            self._write_to_cache(data)
+
+        return data
 
     def __len__(self):
         return 1
