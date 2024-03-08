@@ -96,11 +96,13 @@ class Worker:  # pylint: disable=too-many-instance-attributes
     def __exit__(self, exc_type, exc_val, exc_traceback):
         self.close()
 
-    def write_chunk(self, chunk, key=None):
+    def write_chunk(self, chunk, start_time, end_time):
         assert self.station is not None
 
-        if key is None:
-            key = str(int(time.time() * 1000000))
+        start_time = str(int(start_time * 1000000))
+        end_time = str(int(end_time * 1000000))
+
+        key = start_time + '_' + end_time
         key = os.path.join(self.station, key)
 
         if self.storage_mode == 's3':
@@ -354,8 +356,11 @@ class Worker:  # pylint: disable=too-many-instance-attributes
 
                         itr = iter(stream)
 
+                    start_time = time.time()
                     chunk = next(itr)
-                    out_url = self.write_chunk(chunk)
+                    end_time = time.time()
+
+                    out_url = self.write_chunk(chunk, start, end)
                 except Exception as exc:  # pylint: disable=broad-except
                     with self.db.cursor() as cur:
                         # log the failure; this is concurency-safe because

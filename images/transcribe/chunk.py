@@ -125,12 +125,23 @@ class Chunk:
         with open(self._url_parsed.path + '.json', 'wt', encoding='utf-8') as fobj:
             fobj.write(results)
 
+    @cached_property
+    def times(self):
+        start, end = os.path.basename(self._url_parsed.path).split('_')
+
+        return {
+            'start': float(int(start)) / 1000000,
+            'end': float(int(end)) / 1000000,
+        }
+
     def write_results(self, results):
         ret = json.dumps({
             'url': self.url,
             'station': self.station,
             'lang': self.lang,
-            'results': results
+            'ingest_start_time': self.times['start'],
+            'ingest_end_time': self.times['end'],
+            'results': results,
         })
 
         if self.storage_mode == 's3':
