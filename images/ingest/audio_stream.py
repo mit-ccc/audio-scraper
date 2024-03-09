@@ -54,6 +54,7 @@ class PlaylistMediaType(Enum):
 
     PLS = 'pls'
     M3U = 'm3u'
+    M3U8 = 'm3u8'
     ASX = 'asx'
 
 
@@ -532,6 +533,9 @@ class AudioStream(MediaUrl):
             return PlsIterator
 
         if stream.media_type == PlaylistMediaType.M3U:
+            return M3uIterator
+
+        if stream.media_type == PlaylistMediaType.M3U8:
             return M3uIterator
 
         if stream.media_type == WebscrapeMediaType.IHEART:
