@@ -525,7 +525,13 @@ class AudioStream(MediaUrl):
         self.close()
 
     def __iter__(self):
-        return self._iterator
+        content = it.chain.from_iterable(self._iterator)
+
+        while True:
+            chunk = bytes(it.islice(content, self.chunk_size))
+            if not chunk:
+                break
+            yield chunk
 
     def close(self):
         '''
