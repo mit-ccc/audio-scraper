@@ -346,6 +346,8 @@ class WebscrapeIterator(MediaIterator):
             self.content = PlsIterator(stream=stream)
         elif stream.media_type == PlaylistMediaType.M3U:
             self.content = M3uIterator(stream=stream)
+        elif stream.media_type == PlaylistMediaType.M3U8:
+            self.content = M3uIterator(stream=stream)
         elif stream.media_type in MediaTypeGroups.WEBSCRAPE:
             raise ex.IngestException("WebscrapeIterators may not be nested")
         else:  # fallback to streaming
@@ -509,15 +511,21 @@ class AudioStream(MediaUrl):
             # Fall back to trying to stream it
             self._iterator = DirectStreamIterator(stream=self)
         else:
-            msg = "No iterator available for %s"
+            msg = 'No iterator available for %s'
             vals = (self.url,)
             raise NotImplementedError(msg % vals)
+
+        logger.debug('AudioStream created for %s with _ext %s and iterator class %s',
+                     self.url, self._ext, type(self._iterator).__name__)
 
     def __enter__(self):
         return self
 
     def __exit__(self, exc_type, exc_val, exc_traceback):
         self.close()
+
+    def __iter__(self):
+        return self._iterator
 
     def close(self):
         '''
@@ -547,6 +555,3 @@ class AudioStream(MediaUrl):
             return IHeartIterator
 
         return None
-
-    def __iter__(self):
-        return self._iterator
