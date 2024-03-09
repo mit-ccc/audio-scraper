@@ -3,8 +3,7 @@ SHELL := /bin/bash
 .PHONY: up down deploy
 
 up: down
-	set -a && source conf.env && docker compose up --build \
-		--scale transcribe="$$N_TRANSCRIBE"
+	docker compose up --build --remove-orphans --scale transcribe=1
 
 down: conf.env docker-compose.yml
 	docker compose down
