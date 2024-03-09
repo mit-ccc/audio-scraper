@@ -221,8 +221,13 @@ class DirectStreamIterator(MediaIterator):
         chunk_size = self.stream.raw_chunk_size_bytes
         content = self.conn.iter_content(chunk_size=chunk_size)
 
+        if self.stream.media_type is not None:
+            media_type = self.stream.media_type.value
+        else:
+            media_type = None
+
         self.content = (
-            {'media_type': self.stream.media_type.value, 'data': chunk}
+            {'media_type': media_type, 'data': chunk}
             for chunk in content
         )
 
@@ -557,6 +562,9 @@ class AudioStream(MediaUrl):
                 chunk['media_type'] is None or
                 chunk['media_type'] in MediaTypeGroups.DIRECT
             )
+
+            logger.debug('Chunk with format %s of size %s',
+                         chunk['media_type'], len(chunk['data']))
 
             with io.BytesIO(chunk['data']) as f:
                 buf += AudioSegment.from_file(f, format=chunk['media_type'])
