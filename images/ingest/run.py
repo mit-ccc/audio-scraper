@@ -38,7 +38,9 @@ if __name__ == '__main__':
         raise ValueError('Must provide STORE_URL environment variable')
 
     thresh = os.getenv('CHUNK_ERROR_THRESHOLD', None)
-    if thresh == 'None' or thresh == 'null' or int(thresh) < 0:
+    if thresh is None:
+        pass
+    elif thresh == 'None' or thresh == 'null' or int(thresh) < 0:
         thresh = None
     else:
         thresh = int(thresh)
