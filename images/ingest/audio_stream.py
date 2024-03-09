@@ -414,41 +414,46 @@ class MediaUrl:
         if ext is not None and ext != '':
             self._ext = ext
         elif autodetect:
-            try:
-                # Open a stream to it and guess by MIME type
-                args = {
-                    'url': self.url,
-                    'stream': True,
-                    'timeout': 10
-                }
-
-                with rq.get(**args) as resp:
-                    mimetype = resp.headers.get('Content-Type')
-
-                    if mimetype is None:
-                        autoext = ''
-                    else:
-                        if ';' in mimetype:
-                            mimetype = mimetype.split(';')[0]
-
-                        autoext = mt.guess_extension(mimetype)
-                        if autoext is None:
-                            autoext = ''
-                        else:
-                            autoext = autoext[1:]
-
-                self._ext = autoext
-            except Exception:  # pylint: disable=broad-except
-                msg = 'Encountered exception while guessing stream type'
-                logger.warning(msg)
-
-                self._ext = ''
+            self._ext = self._autodetect_ext()
         else:
             self._ext = ''
 
     def _parse_ext(self):
         pth = urlparse.urlparse(self.url).path
         ext = os.path.splitext(os.path.basename(pth))[1][1:]
+
+        return ext
+
+    def _autodetect_ext(self):
+        try:
+            # Open a stream to it and guess by MIME type
+            args = {
+                'url': self.url,
+                'stream': True,
+                'timeout': 10
+            }
+
+            with rq.get(**args) as resp:
+                mimetype = resp.headers.get('Content-Type')
+
+                if mimetype is None:
+                    autoext = ''
+                else:
+                    if ';' in mimetype:
+                        mimetype = mimetype.split(';')[0]
+
+                    autoext = mt.guess_extension(mimetype)
+                    if autoext is None:
+                        autoext = ''
+                    else:
+                        autoext = autoext[1:]
+
+            ext = autoext
+        except Exception:  # pylint: disable=broad-except
+            msg = 'Encountered exception while guessing stream type'
+            logger.warning(msg)
+
+            ext = ''
 
         return ext
 
