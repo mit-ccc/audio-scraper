@@ -52,15 +52,18 @@ class Worker:  # pylint: disable=too-many-instance-attributes
     # pylint: disable-next=too-many-arguments
     def __init__(self, store_url: str, dsn: str = 'Database',
                  chunk_error_threshold: Optional[int] = None,
-                 chunk_size: int = 5*2**20, poll_interval: float = 10.0):
+                 chunk_size_seconds: int = 30,
+                 poll_interval: float = 10.0,
+                 save_format: str = 'wav'):
         super().__init__()
 
         # No AWS creds - we assume they're in the environment
         self.dsn = dsn
         self.store_url = store_url
         self.chunk_error_threshold = chunk_error_threshold
-        self.chunk_size = chunk_size
+        self.chunk_size_seconds = chunk_size_seconds
         self.poll_interval = poll_interval
+        self.save_format = save_format
 
         self.db = pyodbc.connect(dsn=self.dsn)
         self.db.autocommit = True
@@ -102,7 +105,7 @@ class Worker:  # pylint: disable=too-many-instance-attributes
         start_time = str(int(start_time * 1000000))
         end_time = str(int(end_time * 1000000))
 
-        key = start_time + '_' + end_time
+        key = start_time + '-' + end_time + '.' + self.save_format
         key = os.path.join(self.station, key)
 
         if self.storage_mode == 's3':
@@ -351,10 +354,10 @@ class Worker:  # pylint: disable=too-many-instance-attributes
                     if stream is None:
                         stream = AudioStream(
                             url=self.stream_url,
-                            chunk_size=self.chunk_size,
+                            save_format=self.save_format,
                         )
 
-                        itr = iter(stream)
+                        itr = stream.iter_time_chunks(self.chunk_size_seconds)
 
                     start_time = time.time()
                     chunk = next(itr)

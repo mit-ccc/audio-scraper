@@ -127,7 +127,8 @@ class Chunk:
 
     @cached_property
     def times(self):
-        start, end = os.path.basename(self._url_parsed.path).split('_')
+        name = os.path.basename(self._url_parsed.path).split('.')[0]
+        start, end = name.split('-')
 
         return {
             'start': float(int(start)) / 1000000,

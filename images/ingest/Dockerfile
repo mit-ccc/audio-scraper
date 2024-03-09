@@ -5,7 +5,8 @@ ARG DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y apt-utils
 RUN apt-get install -y build-essential unixodbc unixodbc-dev odbc-postgresql \
-                       jq ca-certificates libxml2 libxml2-dev wait-for-it
+                       jq ca-certificates libxml2 libxml2-dev wait-for-it \
+                       ffmpeg libavcodec-extra libasound2-dev
 RUN apt-get clean
 
 WORKDIR /usr/src/app

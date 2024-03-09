@@ -4,3 +4,5 @@ boto3
 bs4
 m3u8
 lxml
+pydub
+simpleaudio

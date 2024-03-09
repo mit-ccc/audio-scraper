@@ -6,6 +6,7 @@ types, including direct audio streams, playlists, and scraped web pages.
 '''
 
 import os
+import io
 import re
 import json
 import logging
@@ -20,6 +21,8 @@ from abc import ABC, abstractmethod
 import bs4
 import m3u8
 import requests as rq
+
+from pydub import AudioSegment
 
 import exceptions as ex
 
@@ -37,13 +40,16 @@ class DirectMediaType(Enum):
     This class enumerates the media types that can be directly streamed.
     '''
 
+    WAV = 'wav'
     MP3 = 'mp3'
+    FLV = 'flv'
+    OGG = 'ogg'
     AAC = 'aac'
     WMA = 'wma'
-    OGG = 'ogg'
-    WAV = 'wav'
+    RAW = 'raw'
+    PCM = 'pcm'
     FLAC = 'flac'
-    FLV = 'flv'
+    WEBM = 'webm'
 
 
 class PlaylistMediaType(Enum):
@@ -205,10 +211,20 @@ class DirectStreamIterator(MediaIterator):
     '''
 
     def _refresh(self):
-        headers = {'User-Agent': self.user_agent}
-        self.conn = self.session.get(self.stream.url, stream=True,
-                                     timeout=self.timeout, headers=headers)
-        self.content = self.conn.iter_content(chunk_size=self.stream.chunk_size)
+        self.conn = self.session.get(
+            self.stream.url,
+            stream=True,
+            timeout=self.timeout,
+            headers={'User-Agent': self.user_agent},
+        )
+
+        chunk_size = self.stream.raw_chunk_size_bytes
+        content = self.conn.iter_content(chunk_size=chunk_size)
+
+        self.content = (
+            {'media_type': self.stream.media_type.value, 'data': chunk}
+            for chunk in content
+        )
 
 
 class PlaylistIterator(MediaIterator):
@@ -324,7 +340,7 @@ class WebscrapeIterator(MediaIterator):
 
     @abstractmethod
     def _webscrape_extract_media_url(self, txt):
-        msg = "Subclasses must implement _webscrape_extract_media_url"
+        msg = 'Subclasses must implement _webscrape_extract_media_url'
         raise NotImplementedError(msg)
 
     def _refresh(self):
@@ -349,7 +365,7 @@ class WebscrapeIterator(MediaIterator):
         elif stream.media_type == PlaylistMediaType.M3U8:
             self.content = M3uIterator(stream=stream)
         elif stream.media_type in MediaTypeGroups.WEBSCRAPE:
-            raise ex.IngestException("WebscrapeIterators may not be nested")
+            raise ex.IngestException('WebscrapeIterators may not be nested')
         else:  # fallback to streaming
             self.content = DirectStreamIterator(stream=stream)
 
@@ -491,10 +507,15 @@ class AudioStream(MediaUrl):
         # for use in webscrape iterators' descendant streams
         self.args = dict(kwargs)
 
-        self.chunk_size = kwargs.pop('chunk_size', 2**20)
         self.retry_error_max = kwargs.pop('retry_error_max', 0)
         self.unknown_formats = kwargs.pop('unknown_formats', 'error')
         self.retry_on_close = kwargs.pop('retry_on_close', False)
+        self.save_format = kwargs.pop('save_format', 'wav')
+
+        # How large a block should we read from the underlying audio file
+        # stream? This is a low-level detail separate from the bytes or seconds
+        # chunk sizes used in the iter_*_chunks methods.
+        self.raw_chunk_size_bytes = kwargs.pop('raw_chunk_size_bytes', 2**20)
 
         super().__init__(**kwargs)
 
@@ -525,10 +546,39 @@ class AudioStream(MediaUrl):
         self.close()
 
     def __iter__(self):
-        content = it.chain.from_iterable(self._iterator)
+        return self._iterator
+
+    def iter_time_chunks(self, chunk_size_seconds=30):
+        chunk_size = chunk_size_seconds * 1000  # indexing is in milliseconds
+        buf = AudioSegment.empty()
+
+        for chunk in self:
+            assert (
+                chunk['media_type'] is None or
+                chunk['media_type'] in MediaTypeGroups.DIRECT
+            )
+
+            with io.BytesIO(chunk['data']) as f:
+                buf += AudioSegment.from_file(f, format=chunk['media_type'])
+
+            while len(buf) >= chunk_size:
+                chunk, buf = buf[:chunk_size], buf[chunk_size:]
+
+                with io.BytesIO() as out:
+                    chunk.export(out, format=self.save_format)
+                    yield out.getvalue()
+
+        if len(buf) > 0:
+            with io.BytesIO() as out:
+                chunk.export(out, format=self.save_format)
+                yield out.getvalue()
+
+    def iter_byte_chunks(self, chunk_size=2**20):
+        # Just ignore the format information in c['media_type']
+        content = it.chain.from_iterable(c['data'] for c in self._iterator)
 
         while True:
-            chunk = bytes(it.islice(content, self.chunk_size))
+            chunk = bytes(it.islice(content, chunk_size))
             if not chunk:
                 break
             yield chunk

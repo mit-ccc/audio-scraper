@@ -53,7 +53,7 @@ if __name__ == '__main__':
         'n_tasks': int(os.getenv('N_TASKS', '10')),
         'poll_interval': float(os.getenv('POLL_INTERVAL', '60')),
 
-        'chunk_size': int(os.getenv('CHUNK_SIZE', str(5 * 2**20))),
+        'chunk_size_seconds': int(os.getenv('CHUNK_SIZE_SECONDS', '30')),
         'chunk_error_threshold': thresh,
     }
 
