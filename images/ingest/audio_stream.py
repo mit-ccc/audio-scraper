@@ -520,7 +520,7 @@ class AudioStream(MediaUrl):
         # How large a block should we read from the underlying audio file
         # stream? This is a low-level detail separate from the bytes or seconds
         # chunk sizes used in the iter_*_chunks methods.
-        self.raw_chunk_size_bytes = kwargs.pop('raw_chunk_size_bytes', 2**20)
+        self.raw_chunk_size_bytes = kwargs.pop('raw_chunk_size_bytes', 2**16)
 
         super().__init__(**kwargs)
 
