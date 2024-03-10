@@ -5,8 +5,6 @@ to iterate over the stream's contents. Both classes cover a variety of stream
 types, including direct audio streams, playlists, and scraped web pages.
 '''
 
-# asx / mms files
-
 import os
 import io
 import re
