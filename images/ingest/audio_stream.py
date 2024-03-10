@@ -73,38 +73,6 @@ class WebscrapeMediaType(Enum):
     IHEART = 'iheart'
 
 
-class MediaTypeGroups(set, Enum):
-    '''
-    This class groups media types into sets. It's used to determine whether a
-    file extension corresponds to a direct media stream, a playlist, or a web
-    page that contains media.
-    '''
-
-    DIRECT = {x.value for x in DirectMediaType}
-    PLAYLIST = {x.value for x in PlaylistMediaType}
-    WEBSCRAPE = {x.value for x in WebscrapeMediaType}
-
-    @staticmethod
-    def ext_to_media_type(ext):
-        '''
-        This method takes a file extension and returns the media type it
-        corresponds to. If the extension is not recognized, None is returned.
-        '''
-
-        ext = ext.lower()
-
-        if ext in MediaTypeGroups.DIRECT:
-            return DirectMediaType(ext)
-
-        if ext in MediaTypeGroups.PLAYLIST:
-            return PlaylistMediaType(ext)
-
-        if ext in MediaTypeGroups.WEBSCRAPE:
-            return WebscrapeMediaType(ext)
-
-        return None
-
-
 # AudioStream represents 'what to do' and this class
 # represents 'how to do it'. Fetching and parsing logic
 # is here; chunk sizes, retry configuration, the actual
@@ -221,13 +189,8 @@ class DirectStreamIterator(MediaIterator):
         chunk_size = self.stream.raw_chunk_size_bytes
         content = self.conn.iter_content(chunk_size=chunk_size)
 
-        if self.stream.media_type is not None:
-            media_type = self.stream.media_type.value
-        else:
-            media_type = None
-
         self.content = (
-            {'media_type': media_type, 'data': chunk}
+            {'media_type': self.stream.media_type, 'data': chunk}
             for chunk in content
         )
 
@@ -369,7 +332,7 @@ class WebscrapeIterator(MediaIterator):
             self.content = M3uIterator(stream=stream)
         elif stream.media_type == PlaylistMediaType.M3U8:
             self.content = M3uIterator(stream=stream)
-        elif stream.media_type in MediaTypeGroups.WEBSCRAPE:
+        elif stream.media_type in WebscrapeMediaType:
             raise ex.IngestException('WebscrapeIterators may not be nested')
         else:  # fallback to streaming
             self.content = DirectStreamIterator(stream=stream)
@@ -481,7 +444,7 @@ class MediaUrl:
         return ext
 
     @property
-    def is_iheart(self):
+    def _is_iheart(self):
         '''
         This property returns whether the URL is an iHeartRadio URL.
         '''
@@ -497,8 +460,23 @@ class MediaUrl:
         This property returns the media type of the URL.
         '''
 
-        ext = 'iheart' if self.is_iheart else self._ext
-        return MediaTypeGroups.ext_to_media_type(ext)
+        ext = 'iheart' if self._is_iheart else self._ext
+        ext = ext.lower()
+
+        values_direct = {x.value for x in DirectMediaType}
+        values_playlist = {x.value for x in PlaylistMediaType}
+        values_webscrape = {x.value for x in WebscrapeMediaType}
+
+        if ext in values_direct:
+            return DirectMediaType(ext)
+
+        if ext in values_playlist:
+            return PlaylistMediaType(ext)
+
+        if ext in values_webscrape:
+            return WebscrapeMediaType(ext)
+
+        return None
 
 
 class AudioStream(MediaUrl):
@@ -560,14 +538,17 @@ class AudioStream(MediaUrl):
         for chunk in self:
             assert (
                 chunk['media_type'] is None or
-                chunk['media_type'] in MediaTypeGroups.DIRECT
+                chunk['media_type'] in DirectMediaType
             )
 
             logger.debug('Chunk with format %s of size %s',
                          chunk['media_type'], len(chunk['data']))
 
             with io.BytesIO(chunk['data']) as f:
-                buf += AudioSegment.from_file(f, format=chunk['media_type'])
+                mt = chunk['media_type']
+                mt = mt.value if mt is not None else None
+
+                buf += AudioSegment.from_file(f, format=mt)
 
             while len(buf) >= chunk_size:
                 out, buf = buf[:chunk_size], buf[chunk_size:]
@@ -600,22 +581,21 @@ class AudioStream(MediaUrl):
 
     @staticmethod
     def _iterator_for_stream(stream):
-        if stream.media_type.value in MediaTypeGroups.DIRECT:
-            return DirectStreamIterator
+        if stream.media_type is None:
+            ret = None
+        elif stream.media_type in DirectMediaType:
+            ret = DirectStreamIterator
+        elif stream.media_type == PlaylistMediaType.ASX:
+            ret = AsxIterator
+        elif stream.media_type == PlaylistMediaType.PLS:
+            ret = PlsIterator
+        elif stream.media_type == PlaylistMediaType.M3U:
+            ret = M3uIterator
+        elif stream.media_type == PlaylistMediaType.M3U8:
+            ret = M3uIterator
+        elif stream.media_type == WebscrapeMediaType.IHEART:
+            ret = IHeartIterator
+        else:
+            ret = None
 
-        if stream.media_type == PlaylistMediaType.ASX:
-            return AsxIterator
-
-        if stream.media_type == PlaylistMediaType.PLS:
-            return PlsIterator
-
-        if stream.media_type == PlaylistMediaType.M3U:
-            return M3uIterator
-
-        if stream.media_type == PlaylistMediaType.M3U8:
-            return M3uIterator
-
-        if stream.media_type == WebscrapeMediaType.IHEART:
-            return IHeartIterator
-
-        return None
+        return ret
