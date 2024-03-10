@@ -573,7 +573,7 @@ class AudioStream(MediaUrl):
                 mtype = chunk['media_type']
                 mtype = mtype.value if mtype is not None else None
 
-                buf += AudioSegment.from_file(obj, format=mtype)
+                buf += AudioSegment.from_file(obj, format=mtype, parameters=['-analyzeduration', '5M'])
 
             while len(buf) >= chunk_size:
                 out, buf = buf[:chunk_size], buf[chunk_size:]
