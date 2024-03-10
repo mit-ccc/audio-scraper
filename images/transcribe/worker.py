@@ -212,10 +212,14 @@ class TranscribeWorker:  # pylint: disable=too-many-instance-attributes
         '''
 
         while True:
+            logger.debug('Begun acquiring task')
             self.acquire_task()
+            logger.debug('Acquired task')
 
-            msg = "Began processing chunk_id %s from %s"
-            logger.info(msg, self.chunk_id, self.url)
+            logger.info(
+                'Began processing chunk_id %s from %s',
+                self.chunk_id, self.url
+            )
 
             try:
                 chunk = Chunk(
@@ -248,6 +252,7 @@ class TranscribeWorker:  # pylint: disable=too-many-instance-attributes
                 logger.exception('Chunk failed; ignoring')
             else:
                 # we no longer need this DB entry
+                logger.debug('Updating DB to remove chunk %s', self.url)
                 with self.db.cursor() as cur:
                     cur.execute('''
                     delete
@@ -255,11 +260,15 @@ class TranscribeWorker:  # pylint: disable=too-many-instance-attributes
                     where
                         chunk_id = ?
                     ''', (self.chunk_id,))
+                logger.debug('Removed chunk %s from DB', self.url)
 
                 if self.remove_audio:
                     logger.debug('Removing chunk %s', self.url)
                     chunk.remove()
+                    logger.debug('Removed chunk %s', self.url)
             finally:
+                logger.debug('Start garbage collection')
                 gc.collect()
+                logger.debug('End garbage collection')
 
         return self
