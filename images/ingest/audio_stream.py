@@ -515,7 +515,7 @@ class AudioStream(MediaUrl):
 
         self.retry_error_max = kwargs.pop('retry_error_max', 0)
         self.unknown_formats = kwargs.pop('unknown_formats', 'error')
-        self.retry_on_close = kwargs.pop('retry_on_close', True)
+        self.retry_on_close = kwargs.pop('retry_on_close', False)
         self.save_format = kwargs.pop('save_format', 'wav')
 
         # How large a block should we read from the underlying audio file

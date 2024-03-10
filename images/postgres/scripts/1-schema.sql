@@ -11,12 +11,11 @@ create table data.station
     station_id integer not null primary key,
 
     name text not null unique,
-    stream_url text not null,
+    stream_url text not null, -- unique, -- no reason to allow the same url twice
     auto_ingest bool not null default false,
-    lang char(2)
+    lang char(2), -- null => autodetect for transcribe
+    retry_on_close bool not null default false
 );
-
-create index station_name on data.station (name);
 
 /*
  * Control tables and views for the ingest

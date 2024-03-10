@@ -68,9 +68,10 @@ class Worker:  # pylint: disable=too-many-instance-attributes
         self.db = pyodbc.connect(dsn=self.dsn)
         self.db.autocommit = True
 
-        self.station = None
         self.station_id = None
+        self.station = None
         self.stream_url = None
+        self.retry_on_close = None
 
         if self.storage_mode == 's3':
             self._client = boto3.client('s3')
@@ -308,7 +309,8 @@ class Worker:  # pylint: disable=too-many-instance-attributes
             cur.execute('''
             select
                 name as station,
-                stream_url
+                stream_url,
+                retry_on_close
             from data.station
             where
                 station_id = ?;
@@ -317,6 +319,7 @@ class Worker:  # pylint: disable=too-many-instance-attributes
             res = cur.fetchone()
             self.station = res[0]
             self.stream_url = res[1]
+            self.retry_on_close = res[2]
 
         return self
 
@@ -355,6 +358,7 @@ class Worker:  # pylint: disable=too-many-instance-attributes
                         stream = AudioStream(
                             url=self.stream_url,
                             save_format=self.save_format,
+                            retry_on_close=self.retry_on_close,
                         )
 
                         itr = stream.iter_time_chunks(self.chunk_size_seconds)
