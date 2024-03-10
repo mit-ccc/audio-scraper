@@ -24,7 +24,8 @@ class TranscribeWorker:  # pylint: disable=too-many-instance-attributes
                  dsn: str = 'Database',
                  chunk_error_behavior: str = 'ignore',
                  chunk_error_threshold: int = 10,
-                 poll_interval: int = 10):
+                 poll_interval: int = 10,
+                 remove_audio: bool = False):
         super().__init__()
 
         self.transcriber = Transcriber(
@@ -39,6 +40,7 @@ class TranscribeWorker:  # pylint: disable=too-many-instance-attributes
         self.chunk_error_behavior = chunk_error_behavior
         self.chunk_error_threshold = chunk_error_threshold
         self.poll_interval = poll_interval
+        self.remove_audio = remove_audio
 
         self.db = pyodbc.connect(dsn=self.dsn)
         self.db.autocommit = True
@@ -170,12 +172,11 @@ class TranscribeWorker:  # pylint: disable=too-many-instance-attributes
         worker from the acquired task.
         '''
 
-        # in a high-concurrency situation,
-        # spread out the load on the DB
+        # in a high-concurrency situation, spread out the load on the DB
         time.sleep(random.uniform(0, 2*self.poll_interval))
 
-        # Use a spinlock; if there's nothing to work on, let's
-        # wait around and keep checking if there is
+        # Use a spinlock; if there's nothing to work on, let's wait around and
+        # keep checking if there is
         while True:
             res = self.lock_task()
             if res is not None:
@@ -230,8 +231,8 @@ class TranscribeWorker:  # pylint: disable=too-many-instance-attributes
                 logger.info('Successfully transcribed %s', self.url)
             except Exception:  # pylint: disable=broad-except
                 with self.db.cursor() as cur:
-                    # log the failure; this is concurency-safe because
-                    # we have the lock on this chunk_id
+                    # log the failure; this is concurency-safe because we have
+                    # the lock on this chunk_id
                     cur.execute('''
                     update app.chunks
                     set
@@ -254,6 +255,10 @@ class TranscribeWorker:  # pylint: disable=too-many-instance-attributes
                     where
                         chunk_id = ?
                     ''', (self.chunk_id,))
+
+                if self.remove_audio:
+                    logger.debug('Removing chunk %s', self.url)
+                    chunk.remove()
             finally:
                 gc.collect()
 

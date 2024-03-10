@@ -39,6 +39,27 @@ class Chunk:
             if cache_dir is not None:
                 logger.warning('Ignoring cache_dir with local files')
 
+    def remove(self):
+        if self.storage_mode == 's3':
+            if self._is_cached:
+                try:
+                    os.unlink(self._cache_path)
+                except FileNotFoundError:
+                    pass
+
+            bucket = self._url_parsed.netloc
+
+            key = self._url_parsed.path
+            if key.startswith('/'):
+                key = key[1:]
+
+            self._client.delete_object(Bucket=bucket, Key=key)
+        else:  # storage_mode == 'file'
+            try:
+                os.unlink(self._url_parsed.path)
+            except FileNotFoundError:
+                pass
+
     @cached_property
     def _url_parsed(self):
         return urlparse(self.url)

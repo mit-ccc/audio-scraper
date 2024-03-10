@@ -47,7 +47,7 @@ if __name__ == '__main__':
     SEED = int(os.getenv('SEED', '42'))
     seed_everything(SEED)
 
-    args = {
+    kwargs = {
         'whisper_version': os.getenv('WHISPER_VERSION', 'base'),
         'compute_type': os.getenv('COMPUTE_TYPE', 'default'),
         'device': os.getenv('DEVICE', None),
@@ -56,7 +56,8 @@ if __name__ == '__main__':
         'chunk_error_behavior': os.getenv('CHUNK_ERROR_BEHAVIOR', 'ignore'),
         'chunk_error_threshold': int(os.getenv('CHUNK_ERROR_THRESHOLD', '10')),
         'poll_interval': int(os.getenv('POLL_INTERVAL', '60')),
+        'remove_audio': os.getenv('REMOVE_AUDIO', 'false').lower() not in ('false', '0', '')
     }
 
-    with TranscribeWorker(**args) as worker:
+    with TranscribeWorker(**kwargs) as worker:
         worker.run()

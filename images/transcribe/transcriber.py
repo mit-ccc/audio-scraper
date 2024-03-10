@@ -3,6 +3,7 @@ from typing import Optional
 import os
 import logging
 
+import torch
 import whisperx
 
 from load_audio import load_audio
