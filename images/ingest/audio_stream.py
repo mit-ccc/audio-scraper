@@ -570,16 +570,16 @@ class AudioStream(MediaUrl):
                 buf += AudioSegment.from_file(f, format=chunk['media_type'])
 
             while len(buf) >= chunk_size:
-                chunk, buf = buf[:chunk_size], buf[chunk_size:]
+                out, buf = buf[:chunk_size], buf[chunk_size:]
 
-                with io.BytesIO() as out:
-                    chunk.export(out, format=self.save_format)
-                    yield out.getvalue()
+                with io.BytesIO() as obj:
+                    out.export(obj, format=self.save_format)
+                    yield obj.getvalue()
 
         if len(buf) > 0:
-            with io.BytesIO() as out:
-                chunk.export(out, format=self.save_format)
-                yield out.getvalue()
+            with io.BytesIO() as obj:
+                buf.export(obj, format=self.save_format)
+                yield obj.getvalue()
 
     def iter_byte_chunks(self, chunk_size=2**20):
         # Just ignore the format information in c['media_type']
