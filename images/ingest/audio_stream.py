@@ -600,7 +600,7 @@ class AudioStream(MediaUrl):
 
     @staticmethod
     def _iterator_for_stream(stream):
-        if stream.media_type in MediaTypeGroups.DIRECT:
+        if stream.media_type.value in MediaTypeGroups.DIRECT:
             return DirectStreamIterator
 
         if stream.media_type == PlaylistMediaType.ASX:
