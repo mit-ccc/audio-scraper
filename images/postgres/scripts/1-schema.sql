@@ -131,6 +131,8 @@ create table transcribe.jobs
     last_error text
 );
 
+create index idx_jobs_station_id on transcribe.jobs(station_id);
+
 -- Overall job status report
 create or replace view transcribe.stats as
 select
