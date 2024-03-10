@@ -236,7 +236,7 @@ class AsxIterator(PlaylistIterator):
     '''
 
     def _get_component_urls(self, txt):
-        soup = bs4.BeautifulSoup(txt)
+        soup = bs4.BeautifulSoup(txt, features='lxml')
         hrefs = [x['href'] for x in soup.find_all('ref')]
 
         return hrefs
