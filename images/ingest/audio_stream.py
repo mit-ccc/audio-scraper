@@ -5,6 +5,8 @@ to iterate over the stream's contents. Both classes cover a variety of stream
 types, including direct audio streams, playlists, and scraped web pages.
 '''
 
+# asx / mms files
+
 import os
 import io
 import re
@@ -241,8 +243,7 @@ class PlaylistIterator(MediaIterator):
         # only. If we do propagate it, playlists with multiple segments
         # won't read correctly: we'll be stuck on the first segment forever
         # after it closes, reopening and repeatedly reading it.
-        if 'retry_on_close' in args.keys():
-            args['retry_on_close'] = False
+        args['retry_on_close'] = False
 
         self.content = it.chain(*[
             AudioStream(**dict(args, url=x))
@@ -298,8 +299,7 @@ class M3uIterator(PlaylistIterator):
 
         if not pls.is_variant:
             if len(pls.segments) == 0:
-                # this seems to be a bug in the m3u8 package
-                # which we'll try to work around
+                # seems to be an m3u8 package bug we'll try to work around
                 segs = [line.strip() for line in txt.split('\n') if line.strip() != '']
                 for seg in segs:
                     pls.add_segment(m3u8.Segment(uri=seg, base_uri=pls.base_uri))
@@ -324,8 +324,6 @@ class WebscrapeIterator(MediaIterator):
     streams.
     '''
 
-    retry_on_close = False
-
     @abstractmethod
     def _webscrape_extract_media_url(self, txt):
         msg = 'Subclasses must implement _webscrape_extract_media_url'
@@ -338,9 +336,6 @@ class WebscrapeIterator(MediaIterator):
         # we'll just proxy for an iterator on the real stream
         args = dict(self.stream.args)
         args['url'] = url
-
-        if self.retry_on_close:
-            args['retry_on_close'] = True
 
         stream = AudioStream(**args, unknown_formats='direct')
 
@@ -362,8 +357,6 @@ class IHeartIterator(WebscrapeIterator):
     '''
     This class is used to iterate over the contents of an iHeartRadio page.
     '''
-
-    retry_on_close = True
 
     def _webscrape_extract_media_url(self, txt):
         # There's a chunk of json in the page with our URLs in it
@@ -522,7 +515,7 @@ class AudioStream(MediaUrl):
 
         self.retry_error_max = kwargs.pop('retry_error_max', 0)
         self.unknown_formats = kwargs.pop('unknown_formats', 'error')
-        self.retry_on_close = kwargs.pop('retry_on_close', False)
+        self.retry_on_close = kwargs.pop('retry_on_close', True)
         self.save_format = kwargs.pop('save_format', 'wav')
 
         # How large a block should we read from the underlying audio file
