@@ -21,11 +21,11 @@ create table data.station
  * Control tables and views for the ingest
  */
 
-drop schema if exists app cascade;
-create schema app;
+drop schema if exists ingest cascade;
+create schema ingest;
 
-drop table if exists app.ingest_jobs cascade;
-create table app.ingest_jobs
+drop table if exists ingest.jobs cascade;
+create table ingest.jobs
 (
     station_id integer not null primary key
                references data.station
@@ -37,14 +37,14 @@ create table app.ingest_jobs
 );
 
 -- Overall job status report
-create or replace view app.stats as
+create or replace view ingest.stats as
 select
     count(*) as cnt,
     count(l.station_id) as count_working,
     sum((j.error_count > 0)::int) as count_failed,
     max(j.error_count) as highest_error_count,
     min(j.create_dt) as oldest_create_dt
-from app.ingest_jobs j
+from ingest.jobs j
     left join
     (
         select
@@ -57,10 +57,10 @@ from app.ingest_jobs j
     ) l using (station_id);
 
 -- Streams that are currently running correctly
-create or replace view app.running as
+create or replace view ingest.running as
 select
     j.station_id
-from app.ingest_jobs j
+from ingest.jobs j
     inner join
     (
         select
@@ -73,10 +73,10 @@ from app.ingest_jobs j
     ) pl using(station_id);
 
 -- Streams in the queue that aren't currently running
-create or replace view app.waiting as
+create or replace view ingest.waiting as
 select
     j.station_id
-from app.ingest_jobs j
+from ingest.jobs j
     left join
     (
         select
@@ -91,11 +91,11 @@ where
     pl.station_id is null;
 
 -- Streams that have ever failed and whether they're currently running
-create or replace view app.failed as
+create or replace view ingest.failed as
 select
     j.station_id,
     (pl.station_id is not null) as running
-from app.ingest_jobs j
+from ingest.jobs j
     left join
     (
         select
@@ -113,8 +113,11 @@ where
  * Transcribe tables
  */
 
-drop table if exists app.chunks cascade;
-create table app.chunks
+drop schema if exists transcribe cascade;
+create schema transcribe;
+
+drop table if exists transcribe.jobs cascade;
+create table transcribe.jobs
 (
     chunk_id bigserial not null primary key,
 
@@ -127,4 +130,3 @@ create table app.chunks
     error_count integer not null default 0,
     last_error text
 );
-

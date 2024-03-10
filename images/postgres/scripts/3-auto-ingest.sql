@@ -1,5 +1,5 @@
 begin;
-    insert into app.ingest_jobs
+    insert into ingest.jobs
         (station_id)
     select
         ds.station_id

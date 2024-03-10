@@ -156,7 +156,7 @@ class ChunkLoader:
 
         with self.db.cursor() as cur:
             cur.copy_expert(f'''
-            copy app.chunks
+            copy transcribe.jobs
                 ({', '.join(columns)})
             from stdin
             with
