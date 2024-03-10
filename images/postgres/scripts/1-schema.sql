@@ -130,3 +130,76 @@ create table transcribe.jobs
     error_count integer not null default 0,
     last_error text
 );
+
+-- Overall job status report
+create or replace view transcribe.stats as
+select
+    count(*) as cnt,
+    count(l.chunk_id) as count_working,
+    sum((j.error_count > 0)::int) as count_failed,
+    max(j.error_count) as highest_error_count,
+    min(j.create_dt) as oldest_create_dt
+from transcribe.jobs j
+    left join
+    (
+        select
+            objid as chunk_id
+        from pg_locks pli
+        where
+            pli.locktype = 'advisory' and
+            pli.classid = 0 and
+            pli."mode" = 'ExclusiveLock'
+    ) l using (chunk_id);
+
+-- Streams that are currently running correctly
+create or replace view transcribe.running as
+select
+    j.chunk_id
+from transcribe.jobs j
+    inner join
+    (
+        select
+            pli.objid as chunk_id
+        from pg_locks pli
+        where
+            pli.locktype = 'advisory' and
+            pli.classid = 0 and
+            pli."mode" = 'ExclusiveLock'
+    ) pl using(chunk_id);
+
+-- Streams in the queue that aren't currently running
+create or replace view transcribe.waiting as
+select
+    j.chunk_id
+from transcribe.jobs j
+    left join
+    (
+        select
+            pli.objid as chunk_id
+        from pg_locks pli
+        where
+            pli.locktype = 'advisory' and
+            pli.classid = 0 and
+            pli."mode" = 'ExclusiveLock'
+    ) pl using(chunk_id)
+where
+    pl.chunk_id is null;
+
+-- Streams that have ever failed and whether they're currently running
+create or replace view transcribe.failed as
+select
+    j.chunk_id,
+    (pl.chunk_id is not null) as running
+from transcribe.jobs j
+    left join
+    (
+        select
+            pli.objid as chunk_id
+        from pg_locks pli
+        where
+            pli.locktype = 'advisory' and
+            pli.classid = 0 and
+            pli."mode" = 'ExclusiveLock'
+    ) pl using(chunk_id)
+where
+    j.error_count > 0;
