@@ -1,8 +1,8 @@
-# This file specifies how to run the application locally. If you want to deploy
-# for many stations, see the CloudFormation templates in the `aws-deploy/`
-# directory.
-
 version: '3.7'
+
+networks:
+    stack:
+        driver: bridge
 
 services:
     postgres:
@@ -13,6 +13,8 @@ services:
         user: postgres
         networks:
             - stack
+        # volumes:
+        #     - ./data:/usr/src/app/data
         healthcheck:
             test: ["CMD-SHELL", "pg_isready"]
             interval: 10s
@@ -27,6 +29,8 @@ services:
         container_name: ingest
         networks:
             - stack
+        # volumes:
+        #     - ./data:/usr/src/app/data
         depends_on:
             - postgres
         environment:
@@ -40,20 +44,18 @@ services:
       container_name: transcribe
       networks:
           - stack
+      # volumes:
+      #     - ./data:/usr/src/app/data
       depends_on:
           - postgres
       environment:
           - POSTGRES_HOST=postgres
       restart: always
       env_file: conf.env
-      # deploy:
-      #     resources:
-      #         reservations:
-      #             devices:
-      #                 - driver: nvidia
-      #                   capabilities: [gpu]
-      #                   count: all
-
-networks:
-    stack:
-        driver: bridge
+      deploy:
+          resources:
+              reservations:
+                  devices:
+                      - driver: nvidia
+                        capabilities: [gpu]
+                        device_ids: ['1']
