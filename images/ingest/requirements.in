@@ -6,3 +6,4 @@ m3u8
 lxml
 pydub
 simpleaudio
+ffmpeg-python
