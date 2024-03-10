@@ -12,6 +12,7 @@ import json
 import logging
 import mimetypes as mt
 import itertools as it
+import subprocess as sp
 import configparser as cp
 import urllib.parse as urlparse
 
@@ -20,6 +21,7 @@ from abc import ABC, abstractmethod
 
 import bs4
 import m3u8
+import ffmpeg
 import requests as rq
 
 from pydub import AudioSegment
@@ -33,6 +35,24 @@ logger = logging.getLogger(__name__)
 DEFAULT_USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) ' \
                      'AppleWebKit/537.36 (KHTML, like Gecko) ' \
                      'Chrome/119.0.0.0 Safari/537.36'
+
+
+def probe(data, timeout=None):
+    args = ['ffprobe', '-show_format', '-show_streams',
+            '-of', 'json',
+            '-i', 'pipe:0']
+
+    with sp.Popen(args, stdin=sp.PIPE, stdout=sp.PIPE, stderr=sp.PIPE) as proc:
+        out, err = proc.communicate(input=data, timeout=timeout)
+
+        if proc.returncode != 0:
+            raise ffmpeg.Error('ffprobe', out, err)
+
+    return json.loads(out.decode('utf-8'))
+
+
+def probe_format(data, timeout=None):
+    return probe(data, timeout=timeout)['format']['format_name']
 
 
 class DirectMediaType(Enum):
@@ -400,7 +420,11 @@ class MediaUrl:
         if ext is not None and ext != '':
             self._ext = ext
         elif autodetect:
-            self._ext = self._autodetect_ext()
+            try:
+                self._ext = self._autodetect_ext_ffprobe()
+            except Exception:  # pylint: disable=broad-except
+                self._ext = self._autodetect_ext_mime_type()
+
         else:
             self._ext = ''
 
@@ -410,14 +434,20 @@ class MediaUrl:
 
         return ext
 
-    def _autodetect_ext(self):
+    def _autodetect_ext_ffprobe(self):
+        kwargs = {'url': self.url, 'stream': True, 'timeout': 10}
+        with rq.get(**kwargs) as resp:
+            if not resp.ok:
+                resp.raise_for_status()
+
+            chunk = next(iter(resp.iter_content(chunk_size=2**17)))
+
+        return probe_format(chunk)
+
+    def _autodetect_ext_mime_type(self):
         try:
             # Open a stream to it and guess by MIME type
-            args = {
-                'url': self.url,
-                'stream': True,
-                'timeout': 10
-            }
+            args = {'url': self.url, 'stream': True, 'timeout': 10}
 
             with rq.get(**args) as resp:
                 mimetype = resp.headers.get('Content-Type')
@@ -508,18 +538,13 @@ class AudioStream(MediaUrl):
             msg = "unknown_formats must be 'direct' or 'error'"
             raise ValueError(msg) from exc
 
-        cls = self._iterator_for_stream(self)
+        cls = self._get_iterator()
         if cls is not None:
             self._iterator = cls(stream=self)
-        elif self.unknown_formats == 'direct':
-            # Fall back to trying to stream it
-            self._iterator = DirectStreamIterator(stream=self)
         else:
-            msg = 'No iterator available for %s'
-            vals = (self.url,)
-            raise NotImplementedError(msg % vals)
+            raise NotImplementedError('No iterator found for %s' % (self.url,))
 
-        logger.debug('AudioStream created for %s with _ext %s and iterator class %s',
+        logger.debug('AudioStream up for %s; _ext = %s; iterator class %s',
                      self.url, self._ext, type(self._iterator).__name__)
 
     def __enter__(self):
@@ -544,11 +569,11 @@ class AudioStream(MediaUrl):
             logger.debug('Chunk with format %s of size %s',
                          chunk['media_type'], len(chunk['data']))
 
-            with io.BytesIO(chunk['data']) as f:
-                mt = chunk['media_type']
-                mt = mt.value if mt is not None else None
+            with io.BytesIO(chunk['data']) as obj:
+                mtype = chunk['media_type']
+                mtype = mtype.value if mtype is not None else None
 
-                buf += AudioSegment.from_file(f, format=mt)
+                buf += AudioSegment.from_file(obj, format=mtype)
 
             while len(buf) >= chunk_size:
                 out, buf = buf[:chunk_size], buf[chunk_size:]
@@ -579,22 +604,24 @@ class AudioStream(MediaUrl):
 
         self._iterator.close()
 
-    @staticmethod
-    def _iterator_for_stream(stream):
-        if stream.media_type is None:
+    def _get_iterator(self):
+        if self.media_type is None:
             ret = None
-        elif stream.media_type in DirectMediaType:
-            ret = DirectStreamIterator
-        elif stream.media_type == PlaylistMediaType.ASX:
+        elif self.media_type == PlaylistMediaType.ASX:
             ret = AsxIterator
-        elif stream.media_type == PlaylistMediaType.PLS:
+        elif self.media_type == PlaylistMediaType.PLS:
             ret = PlsIterator
-        elif stream.media_type == PlaylistMediaType.M3U:
+        elif self.media_type == PlaylistMediaType.M3U:
             ret = M3uIterator
-        elif stream.media_type == PlaylistMediaType.M3U8:
+        elif self.media_type == PlaylistMediaType.M3U8:
             ret = M3uIterator
-        elif stream.media_type == WebscrapeMediaType.IHEART:
+        elif self.media_type == WebscrapeMediaType.IHEART:
             ret = IHeartIterator
+        elif self.media_type in DirectMediaType:
+            ret = DirectStreamIterator
+        elif self.unknown_formats == 'direct':
+            # Fall back to trying to stream it
+            ret = DirectStreamIterator
         else:
             ret = None
 
