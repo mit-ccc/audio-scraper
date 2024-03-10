@@ -23,4 +23,4 @@ clean:
 	find . -name '*.egg-info'  -not -path '*/\.git/*' -exec rm -rf {} \+
 	find . -name env -type d   -not -path '*/\.git/*' -exec rm -rf {} \+
 	find . -name '__pycache__' -not -path '*/\.git/*' -exec rm -rf {} \+
-
+	find . -name '.mypy_cache' -not -path '*/\.git/*' -exec rm -rf {} \+
