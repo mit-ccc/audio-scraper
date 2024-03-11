@@ -3,19 +3,9 @@
 
 version: '3.7'
 
-networks:
-    stack:
-        driver: bridge
-
 services:
     postgres:
-        build:
-            context: images/postgres
-        container_name: postgres
-        hostname: postgres
-        user: postgres
-        networks:
-            - stack
+        image: audio-scraper-postgres
         volumes:
             - ./data:/usr/src/app/data
         healthcheck:
@@ -27,11 +17,7 @@ services:
         env_file: conf.env
 
     ingest:
-        build:
-            context: images/ingest
-        container_name: ingest
-        networks:
-            - stack
+        image: audio-scraper-ingest
         volumes:
             - ./data:/usr/src/app/data
         depends_on:
@@ -42,11 +28,7 @@ services:
         env_file: conf.env
 
     transcribe:
-        build:
-            context: images/transcribe
-        container_name: transcribe
-        networks:
-            - stack
+        image: audio-scraper-transcribe
         volumes:
             - ./data:/usr/src/app/data
         depends_on:
@@ -55,10 +37,10 @@ services:
             - POSTGRES_HOST=postgres
         restart: always
         env_file: conf.env
-        deploy:
-            resources:
-                reservations:
-                    devices:
-                        - driver: nvidia
-                          capabilities: [gpu]
-                          device_ids: ['1']
+        # deploy:
+        #     resources:
+        #         reservations:
+        #             devices:
+        #                 - driver: nvidia
+        #                   capabilities: [gpu]
+        #                   device_ids: ['1']
