@@ -47,13 +47,22 @@ if __name__ == '__main__':
     SEED = int(os.getenv('SEED', '42'))
     seed_everything(SEED)
 
+    thresh = os.getenv('TRANSCRIBE_CHUNK_ERROR_THRESHOLD', None)
+    if thresh is None:
+        pass
+    elif thresh == 'None' or thresh == 'null' or int(thresh) < 0:
+        thresh = None
+    else:
+        thresh = int(thresh)
+    assert thresh is None or thresh > 0
+
     kwargs = {
         'whisper_version': os.getenv('WHISPER_VERSION', 'base'),
         'compute_type': os.getenv('COMPUTE_TYPE', 'default'),
         'device': os.getenv('DEVICE', None),
         'hf_token': os.getenv('HF_TOKEN', None),
         'dsn': os.getenv('DSN', 'Database'),
-        'chunk_error_behavior': os.getenv('TRANSCRIBE_ON_CHUNK_ERROR', 'ignore'),
+        'chunk_error_threshold': thresh,
         'poll_interval': int(os.getenv('POLL_INTERVAL', '60')),
         'remove_audio': os.getenv('REMOVE_AUDIO', 'false').lower() not in ('false', '0', '')
     }

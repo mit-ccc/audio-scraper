@@ -1,5 +1,3 @@
-# FIXME error threshold not correctly used
-
 from typing import Optional
 
 import sys
@@ -23,13 +21,10 @@ class TranscribeWorker:  # pylint: disable=too-many-instance-attributes
                  device: Optional[str] = None,
                  hf_token: Optional[str] = None,
                  dsn: str = 'Database',
-                 chunk_error_behavior: str = 'ignore',
+                 chunk_error_threshold: Optional[int] = None,
                  poll_interval: int = 10,
                  remove_audio: bool = False):
         super().__init__()
-
-        if chunk_error_behavior not in ('exit', 'ignore'):
-            raise ValueError('chunk_error_behavior must be "exit" or "ignore"')
 
         self.transcriber = Transcriber(
             whisper_version=whisper_version,
@@ -40,7 +35,7 @@ class TranscribeWorker:  # pylint: disable=too-many-instance-attributes
 
         # No AWS creds - we assume they're in the environment
         self.dsn = dsn
-        self.chunk_error_behavior = chunk_error_behavior
+        self.chunk_error_threshold = chunk_error_threshold
         self.poll_interval = poll_interval
         self.remove_audio = remove_audio
 
@@ -90,10 +85,12 @@ class TranscribeWorker:  # pylint: disable=too-many-instance-attributes
             select
                 chunk_id
             from transcribe.jobs
+            where
+                ? or error_count < ?
             order by random()
             limit 1
             for update skip locked;
-            ''')
+            ''', (self.chunk_error_threshold is None, self.chunk_error_threshold)
 
             row  = cur.fetchone()
             chunk_id = row[0] if row is not None else None
