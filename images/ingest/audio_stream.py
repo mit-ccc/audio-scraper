@@ -1,3 +1,5 @@
+# FIXME file URLs?
+
 '''
 This module defines the AudioStream class, which represents a single
 audio stream. It also contains the MediaIterator class, which is used
@@ -10,7 +12,6 @@ import io
 import re
 import json
 import logging
-import mimetypes as mt
 import itertools as it
 import subprocess as sp
 import configparser as cp
@@ -26,52 +27,17 @@ import requests as rq
 
 from pydub import AudioSegment
 
+import audio_utils as au
 import exceptions as ex
 
 
 logger = logging.getLogger(__name__)
 
 
+# FIXME replace
 DEFAULT_USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) ' \
                      'AppleWebKit/537.36 (KHTML, like Gecko) ' \
                      'Chrome/119.0.0.0 Safari/537.36'
-
-
-def probe(data, timeout=None):
-    args = ['ffprobe', '-show_format', '-show_streams',
-            '-of', 'json',
-            '-i', 'pipe:0']
-
-    with sp.Popen(args, stdin=sp.PIPE, stdout=sp.PIPE, stderr=sp.PIPE) as proc:
-        out, err = proc.communicate(input=data, timeout=timeout)
-
-        if proc.returncode != 0:
-            raise ffmpeg.Error('ffprobe', out, err)
-
-    return json.loads(out.decode('utf-8'))
-
-
-def probe_format(data, timeout=None):
-    return probe(data, timeout=timeout)['format']['format_name']
-
-
-def discover_sample_rate(data):
-    try:
-        probe_result = probe(data)
-
-        audio_stream = next((
-            stream
-            for stream in probe_result['streams']
-            if stream['codec_type'] == 'audio'
-        ), None)
-
-        if not audio_stream or 'sample_rate' not in audio_stream:
-            raise RuntimeError('Could not find sample rate in audio stream')
-
-        return int(audio_stream['sample_rate'])
-    except ffmpeg.Error as exc:
-        msg = f'Error probing for sample rate: {exc.stderr.decode()}'
-        raise RuntimeError(msg) from exc
 
 
 class DirectMediaType(Enum):
@@ -369,40 +335,53 @@ class WebscrapeIterator(MediaIterator):
         else:  # fallback to streaming
             self.content = DirectStreamIterator(stream=stream)
 
+    def _url_filter_extension(self, urls, direct=True, playlist=True):
+        assert len(urls) > 0
+        assert direct or playlist
+
+        fmts = []
+        fmts += [x.value for x in DirectMediaType] if direct else []
+        fmts += [x.value for x in PlaylistMediaType] if playlist else []
+
+        ret = None
+        for fmt in fmts:
+            matches = [x for x in urls if re.search(fmt, x)]
+            if len(matches) > 0:
+                ret = matches[0]
+
+        return ret
+
+    def _url_filter_ffprobe(self, urls):
+        fmts = [x.value for x in DirectMediaType]
+
+        for url in urls:
+            ext = au.autodetect_ext_ffprobe(url)
+            if ext in fmts:
+                return url
+
+        return None
+
+    def _url_filter(self, urls, direct=True, playlist=True):
+        try:
+            ret = self._url_filter_extension(urls, direct=direct,
+                                             playlist=playlist)
+
+            if ret is None:
+                ret = self._url_filter_ffprobe(urls)
+
+            assert ret is not None
+
+            return ret
+        except AssertionError as exc:
+            msg = 'No usable streams in {0}'
+            vals = (self.stream.url,)
+            raise ex.IngestException(msg % vals) from exc
+
 
 class IHeartIterator(WebscrapeIterator):
     '''
     This class is used to iterate over the contents of an iHeartRadio page.
     '''
-
-    # FIXME pull some audio from each of these and use ffprobe in addition to
-    # checking extensions
-    def fallback_url_filter(self, urls):
-        try:
-            assert len(urls) > 0
-
-            fmts = [
-                'flv', 'mp3', 'aac', 'wma', 'ogg', 'wav', 'flac',  # direct streams
-
-                # these don't seem to work right and just loop over the same
-                # short piece of audio. possibly they have to be refreshed by
-                # in-page JS, which is way way more trouble than it's worth
-                # when a direct stream is available instead.
-                # 'm3u8', 'm3u', 'pls', 'asx'  # playlists, try second
-            ]
-
-            ret = None
-            for fmt in fmts:
-                matches = [x for x in urls if re.search(fmt, x)]
-                if len(matches) > 0:
-                    ret = matches[0]
-            assert ret is not None
-
-            return ret
-        except AssertionError as exc:
-            msg = 'No usable streams could be found on %s'
-            vals = (self.stream.url,)
-            raise ex.IngestException(msg % vals) from exc
 
     def _webscrape_extract_media_url(self, txt):
         # There's a chunk of json in the page with our URLs in it
@@ -419,7 +398,11 @@ class IHeartIterator(WebscrapeIterator):
         elif 'shoutcast_stream' in streams.keys():
             return streams['shoutcast_stream']
         else:
-            return self.fallback_url_filter(streams.values())
+            # playlists don't seem to work right and just loop over the same
+            # short piece of audio. possibly they have to be refreshed by
+            # in-page JS, which is way way more trouble than it's worth when a
+            # direct stream is available instead.
+            return self._url_filter(streams.values(), playlist=False)
 
 
 class MediaUrl:
@@ -444,9 +427,9 @@ class MediaUrl:
             self._ext = ext
         elif autodetect:
             try:
-                self._ext = self._autodetect_ext_ffprobe()
+                self._ext = au.autodetect_ext_ffprobe(self.url)
             except Exception:  # pylint: disable=broad-except
-                self._ext = self._autodetect_ext_mime_type()
+                self._ext = au.autodetect_ext_mime_type(self.url)
 
         else:
             self._ext = ''
@@ -454,45 +437,6 @@ class MediaUrl:
     def _parse_ext(self):
         pth = urlparse.urlparse(self.url).path
         ext = os.path.splitext(os.path.basename(pth))[1][1:]
-
-        return ext
-
-    def _autodetect_ext_ffprobe(self):
-        kwargs = {'url': self.url, 'stream': True, 'timeout': 10}
-        with rq.get(**kwargs) as resp:
-            if not resp.ok:
-                resp.raise_for_status()
-
-            chunk = next(iter(resp.iter_content(chunk_size=2**17)))
-
-        return probe_format(chunk)
-
-    def _autodetect_ext_mime_type(self):
-        try:
-            # Open a stream to it and guess by MIME type
-            args = {'url': self.url, 'stream': True, 'timeout': 10}
-
-            with rq.get(**args) as resp:
-                mimetype = resp.headers.get('Content-Type')
-
-                if mimetype is None:
-                    autoext = ''
-                else:
-                    if ';' in mimetype:
-                        mimetype = mimetype.split(';')[0]
-
-                    autoext = mt.guess_extension(mimetype)
-                    if autoext is None:
-                        autoext = ''
-                    else:
-                        autoext = autoext[1:]
-
-            ext = autoext
-        except Exception:  # pylint: disable=broad-except
-            msg = 'Encountered exception while guessing stream type'
-            logger.warning(msg)
-
-            ext = ''
 
         return ext
 
@@ -596,9 +540,9 @@ class AudioStream(MediaUrl):
                              '-probesize', '2147483647']
 
             try:
-                ar = discover_sample_rate(chunk['data'])
+                ar = au.discover_sample_rate(chunk['data'])
                 ffmpeg_params += ['-ar', str(ar)]
-            except RuntimeError:
+            except ex.IngestException:
                 logger.warning('Could not discover sample rate')
 
             with io.BytesIO(chunk['data']) as obj:
