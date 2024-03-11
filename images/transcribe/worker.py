@@ -90,7 +90,7 @@ class TranscribeWorker:  # pylint: disable=too-many-instance-attributes
             order by random()
             limit 1
             for update skip locked;
-            ''', (self.chunk_error_threshold is None, self.chunk_error_threshold)
+            ''', (self.chunk_error_threshold is None, self.chunk_error_threshold))
 
             row  = cur.fetchone()
             chunk_id = row[0] if row is not None else None
