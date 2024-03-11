@@ -371,8 +371,7 @@ class Worker:  # pylint: disable=too-many-instance-attributes
             )
 
             self.iterator = self.stream.iter_time_chunks(self.chunk_size_seconds)
-
-        except Exception as exc:  # pylint: disable=broad-except
+        except Exception:  # pylint: disable=broad-except
             logger.exception('Ingest failure')
             self.mark_failure()
 
