@@ -4,7 +4,6 @@ from the remote (e.g., radio station site) and uploads it to S3.
 '''
 
 # FIXME StopIteration / handling streams that terminate
-# FIXME wait-and-retry logic? to replace error threshold etc
 
 from typing import Optional
 

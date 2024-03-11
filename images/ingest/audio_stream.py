@@ -55,6 +55,25 @@ def probe_format(data, timeout=None):
     return probe(data, timeout=timeout)['format']['format_name']
 
 
+def discover_sample_rate(data):
+    try:
+        probe_result = probe(data)
+
+        audio_stream = next((
+            stream
+            for stream in probe_result['streams']
+            if stream['codec_type'] == 'audio'
+        ), None)
+
+        if not audio_stream or 'sample_rate' not in audio_stream:
+            raise RuntimeError('Could not find sample rate in audio stream')
+
+        return int(audio_stream['sample_rate'])
+    except ffmpeg.Error as exc:
+        msg = f'Error probing for sample rate: {exc.stderr.decode()}'
+        raise RuntimeError(msg) from exc
+
+
 class DirectMediaType(Enum):
     '''
     This class enumerates the media types that can be directly streamed.
@@ -560,11 +579,20 @@ class AudioStream(MediaUrl):
             logger.debug('Chunk with format %s of size %s',
                          chunk['media_type'], len(chunk['data']))
 
+            ffmpeg_params = ['-analyzeduration', '2147483647',
+                             '-probesize', '2147483647']
+
+            try:
+                ar = discover_sample_rate(chunk['data'])
+                ffmpeg_params += ['-ar', str(ar)]
+            except RuntimeError:
+                logger.warning('Could not discover sample rate')
+
             with io.BytesIO(chunk['data']) as obj:
                 mtype = chunk['media_type']
                 mtype = mtype.value if mtype is not None else None
 
-                buf += AudioSegment.from_file(obj, format=mtype, parameters=['-analyzeduration', '5M'])
+                buf += AudioSegment.from_file(obj, format=mtype, parameters=ffmpeg_params)
 
             while len(buf) >= chunk_size:
                 out, buf = buf[:chunk_size], buf[chunk_size:]
