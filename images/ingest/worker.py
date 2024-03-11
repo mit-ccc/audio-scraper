@@ -3,9 +3,11 @@ This file is the main file for the audio worker. It downloads the audio stream
 from the remote (e.g., radio station site) and uploads it to S3.
 '''
 
+# FIXME StopIteration / handling streams that terminate
+# FIXME wait-and-retry logic? to replace error threshold etc
+
 from typing import Optional
 
-import gc
 import io
 import os
 import sys
@@ -65,18 +67,26 @@ class Worker:  # pylint: disable=too-many-instance-attributes
         self.poll_interval = poll_interval
         self.save_format = save_format
 
-        self.db = pyodbc.connect(dsn=self.dsn)
-        self.db.autocommit = True
-
+        # properties of the ingested station set in the acquire_task method
         self.station_id = None
         self.station = None
         self.stream_url = None
         self.retry_on_close = None
 
+        # the AudioStream instance and iterator set up in run()
+        self.stream = None
+        self.iterator = None
+
+        self.db = pyodbc.connect(dsn=self.dsn, autocommit=False)
+
         if self.storage_mode == 's3':
             self._client = boto3.client('s3')
         else:
             self._client = None
+
+    #
+    # Worker properties and management
+    #
 
     @cached_property
     def _store_url_parsed(self):
@@ -94,13 +104,39 @@ class Worker:  # pylint: disable=too-many-instance-attributes
 
         return mode
 
+    def close(self):
+        '''
+        Tear down the worker's persistent resources: the audio stream's network
+        connection, the database connection and the advisory lock on the
+        station ID.
+        '''
+
+        try:
+            self.stream.close()
+        except Exception:  # pylint: disable=broad-except
+            pass
+
+        try:
+            self.release_lock()
+        except Exception:  # pylint: disable=broad-except
+            pass
+
+        try:
+            self.db.close()
+        except Exception:  # pylint: disable=broad-except
+            pass
+
     def __enter__(self):
         return self
 
     def __exit__(self, exc_type, exc_val, exc_traceback):
         self.close()
 
-    def write_chunk(self, chunk, start_time, end_time):
+    #
+    # Handle a successful chunk
+    #
+
+    def _write_chunk(self, chunk, start_time, end_time):
         assert self.station is not None
 
         start_time = str(int(start_time * 1000000))
@@ -133,79 +169,44 @@ class Worker:  # pylint: disable=too-many-instance-attributes
 
         return out_url
 
+    #
+    # Acquire a task
+    #
+
     def lock_task(self):
-        '''
-        Lock a task in the database via an advisory lock on the station ID, in
-        order to prevent multiple workers from working on the same station at
-        the same time.
-        '''
-
-        params = (
-            self.chunk_error_threshold is None,
-            self.chunk_error_threshold,
-            self.chunk_error_threshold is None,
-            self.chunk_error_threshold
-        )
-
         with self.db.cursor() as cur:
-            cur.execute('''
-            -- SQL ported from https://github.com/chanks/que
-            with recursive job_locks as
-            (
+            try:
+                cur.execute('lock table ingest.jobs in exclusive mode;')
+
+                cur.execute('''
                 select
-                    (j).*,
-                    pg_try_advisory_lock((j).station_id) as locked
-                from
-                (
-                    select
-                        j
-                    from app.ingest_jobs j
-                    where
-                        ? or
-                        j.error_count < ?
-                    order by station_id
-                    limit 1
-                ) as t1
+                    station_id
+                from ingest.jobs
+                where
+                    not is_locked and
+                    error_count < ?
+                order by random()
+                limit 1;
+                ''', (self.chunk_error_threshold,))
 
-                union all
+                row = cur.fetchone()
+                if row is None:
+                    return None
+                station_id = row[0]
 
-                (
-                    select
-                        (j).*,
-                        pg_try_advisory_lock((j).station_id) as locked
-                    from
-                    (
-                        select
-                        (
-                            select
-                                j
-                            from app.ingest_jobs j
-                            where
-                                j.station_id > job_locks.station_id and
-                                (
-                                    ? or
-                                    j.error_count < ?
-                                )
-                            order by station_id
-                            limit 1
-                        ) as j
-                        from job_locks
-                        where
-                            job_locks.station_id is not null
-                        limit 1
-                    ) as t1
-                )
-            )
-            select
-                station_id
-            from job_locks
-            where
-                locked
-            limit 1;
-            ''', params)
+                cur.execute('''
+                update ingest.jobs
+                set is_locked = true
+                where
+                    station_id = ?
+                ''', (station_id,))
 
-            res = cur.fetchall()
-            return res[0][0] if len(res) > 0 else None
+                return station_id
+            except Exception:  # pylint: disable=broad-except
+                cur.rollback()
+                raise
+            else:
+                cur.commit()
 
     def release_lock(self):
         '''
@@ -214,73 +215,20 @@ class Worker:  # pylint: disable=too-many-instance-attributes
         '''
 
         with self.db.cursor() as cur:
-            cur.execute('''
-            select
-                pg_advisory_unlock(?);
-            ''', (self.station_id,))
+            try:
+                cur.execute('lock table ingest.jobs in exclusive mode;')
 
-            return cur.fetchone()[0]
-
-    def close(self):
-        '''
-        Tear down the worker's persistent resources: the database connection and
-        the advisory lock on the station ID.
-        '''
-
-        try:
-            self.release_lock()
-        except Exception:  # pylint: disable=broad-except
-            pass
-
-        try:
-            self.db.close()
-        except Exception:  # pylint: disable=broad-except
-            pass
-
-        self.station_id = None
-        self.stream_url = None
-
-    def get_stop_conditions(self):
-        '''
-        Check whether the worker has hit its stop conditions and should exit.
-        The worker will exit if the station is no longer in the database, or if
-        the station has failed too many times.
-        '''
-
-        with self.db.cursor() as cur:
-            params = (
-                self.station_id,
-                self.station_id,
-                self.chunk_error_threshold
-            )
-
-            cur.execute('''
-            select
-                not exists(
-                    select
-                        1
-                    from app.ingest_jobs
-                    where
-                        station_id = ?
-                ) as deleted,
-
-                exists(
-                    select
-                        1
-                    from app.ingest_jobs
-                    where
-                        station_id = ? and
-
-                        -- the exists() will return false if ? is null
-                        -- which happens if self.chunk_error_threshold is None
-                        error_count >= ?
-                ) as failed;
-            ''', params)
-
-            ret = cur.fetchone()
-            cols = [col[0] for col in cur.description]
-
-            return dict(zip(cols, ret))
+                cur.execute('''
+                update ingest.jobs
+                set is_locked = false
+                where
+                    station_id = ?
+                ''', (self.station_id,))
+            except Exception:  # pylint: disable=broad-except
+                cur.rollback()
+                raise
+            else:
+                cur.commit()
 
     def acquire_task(self):
         '''
@@ -289,8 +237,7 @@ class Worker:  # pylint: disable=too-many-instance-attributes
         worker from the acquired task.
         '''
 
-        # in a high-concurrency situation,
-        # spread out the load on the DB
+        # in a high-concurrency situation, spread out the load on the DB
         time.sleep(random.uniform(0, 2*self.poll_interval))
 
         # Use a spinlock; if there's nothing to work on, let's
@@ -300,7 +247,6 @@ class Worker:  # pylint: disable=too-many-instance-attributes
             if res is not None:
                 break
 
-            # nothing to lock
             logger.debug('Nothing to work on; spinning')
             time.sleep(self.poll_interval)
         self.station_id = res
@@ -323,6 +269,135 @@ class Worker:  # pylint: disable=too-many-instance-attributes
 
         return self
 
+    #
+    # Error handling
+    #
+
+    def get_stop_conditions(self):
+        '''
+        Check whether the worker has hit its stop conditions and should exit.
+        The worker will exit if the station is no longer in the database, or if
+        the station has failed too many times.
+        '''
+
+        with self.db.cursor() as cur:
+            params = (
+                self.station_id,
+                self.station_id,
+                self.chunk_error_threshold
+            )
+
+            cur.execute('''
+            select
+                not exists(
+                    select
+                        1
+                    from ingest.jobs
+                    where
+                        station_id = ?
+                ) as deleted,
+
+                exists(
+                    select
+                        1
+                    from ingest.jobs
+                    where
+                        station_id = ? and
+
+                        -- the exists() will return false if ? is null
+                        -- which happens if self.chunk_error_threshold is None
+                        error_count >= ?
+                ) as failed;
+            ''', params)
+
+            ret = cur.fetchone()
+            cols = [col[0] for col in cur.description]
+
+            return dict(zip(cols, ret))
+
+    def stop_if_error(self):
+        conds = self.get_stop_conditions()
+
+        if conds['deleted']:
+            msg = "Job %s cancelled"
+            vals = (self.station_id,)
+            raise ex.JobCancelledException(msg % vals)
+
+        if conds['failed']:
+            msg = "Job %s had too many failures"
+            vals = (self.station_id,)
+            raise ex.TooManyFailuresException(msg % vals)
+
+        return self
+
+    def mark_failure(self):
+        info = sys.exc_info()
+        info = '' if info == (None, None, None) else str(info)
+
+        with self.db.cursor() as cur:
+            # concurency-safe because we have the lock on this station_id
+            cur.execute('''
+            update ingest.jobs
+            set
+                error_count = error_count + 1,
+                last_error = ?
+            where
+                station_id = ?;
+            ''', (info, self.station_id))
+
+    def mark_success(self, url):
+        logger.debug('Chunk queued')
+
+        with self.db.cursor() as cur:
+            cur.execute('''
+            insert into transcribe.jobs
+                (station_id, url)
+            values
+                (?, ?);
+            ''', (self.station_id, url))
+
+    #
+    # Main loop
+    #
+
+    def ensure_stream(self):
+        if self.iterator is not None:
+            return self
+
+        try:
+            self.stream = AudioStream(
+                url=self.stream_url,
+                save_format=self.save_format,
+                retry_on_close=self.retry_on_close,
+            )
+
+            self.iterator = self.stream.iter_time_chunks(self.chunk_size_seconds)
+
+        except Exception as exc:  # pylint: disable=broad-except
+            logger.exception('Ingest failure')
+            self.mark_failure()
+
+        return self
+
+    def process_next_chunk(self):
+        try:
+            start_time = time.time()
+            chunk = next(self.iterator)
+            end_time = time.time()
+
+            out_url = self._write_chunk(chunk, start_time, end_time)
+        except Exception as exc:  # pylint: disable=broad-except
+            logger.exception('Ingest failure')
+            self.mark_failure()
+
+            if isinstance(exc, StopIteration):
+                logger.warning('Station %s ran out of audio', self.station)
+                raise
+        else:
+            self.mark_success(out_url)
+
+        return self
+
     def run(self):
         '''
         Main worker entrypoint. Acquire a task, then ingest its stream.
@@ -330,76 +405,11 @@ class Worker:  # pylint: disable=too-many-instance-attributes
 
         self.acquire_task()
 
-        logger.info(
-            "Began ingesting station_id %s from %s",
-            self.station_id, self.stream_url
-        )
+        logger.info('Began ingest: %s from %s', self.station, self.stream_url)
 
-        try:
-            stream, itr = None, None
-
-            while True:
-                conds = self.get_stop_conditions()
-
-                if conds['deleted']:
-                    msg = "Job %s cancelled"
-                    vals = (self.station_id,)
-                    raise ex.JobCancelledException(msg % vals)
-
-                if conds['failed']:
-                    msg = "Job %s had too many failures"
-                    vals = (self.station_id,)
-                    raise ex.TooManyFailuresException(msg % vals)
-
-                try:
-                    # do this rather than "for chunk in stream" so that
-                    # we can get everything inside the try block
-                    if stream is None:
-                        stream = AudioStream(
-                            url=self.stream_url,
-                            save_format=self.save_format,
-                            retry_on_close=self.retry_on_close,
-                        )
-
-                        itr = stream.iter_time_chunks(self.chunk_size_seconds)
-
-                    start_time = time.time()
-                    chunk = next(itr)
-                    end_time = time.time()
-
-                    out_url = self.write_chunk(chunk, start_time, end_time)
-                except Exception as exc:  # pylint: disable=broad-except
-                    with self.db.cursor() as cur:
-                        # log the failure; this is concurency-safe because
-                        # we have the lock on this station_id
-                        cur.execute('''
-                        update app.ingest_jobs
-                        set
-                            error_count = error_count + 1,
-                            last_error = ?
-                        where
-                            station_id = ?;
-                        ''', (str(sys.exc_info()), self.station_id))
-
-                    if isinstance(exc, StopIteration):
-                        raise  # no point continuing after we hit this
-
-                    logger.exception('Chunk failed')
-                else:
-                    # log the success
-                    with self.db.cursor() as cur:
-                        cur.execute('''
-                        insert into app.chunks
-                            (station_id, url)
-                        values
-                            (?, ?);
-                        ''', (self.station_id, out_url))
-                finally:
-                    gc.collect()
-        finally:
-            try:
-                stream.close()
-            except Exception:  # pylint: disable=broad-except
-                pass
+        while True:
+            self.stop_if_error()
+            self.ensure_stream()
+            self.process_next_chunk()
 
         return self
