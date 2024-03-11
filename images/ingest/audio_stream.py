@@ -375,18 +375,7 @@ class IHeartIterator(WebscrapeIterator):
     This class is used to iterate over the contents of an iHeartRadio page.
     '''
 
-    def _webscrape_extract_media_url(self, txt):
-        # There's a chunk of json in the page with our URLs in it
-        soup = bs4.BeautifulSoup(txt, 'lxml')
-        script = soup.find_all('script', id='initialState')[0].text
-
-        # Get the specific piece of json with the urls of interest
-        stations = json.loads(script)['live']['stations']
-        key = list(stations.keys())[0]
-        streams = stations[key]['streams']
-        urls = streams.values()
-
-        # Decide which to return
+    def fallback_url_filter(self, urls):
         try:
             assert len(urls) > 0
 
@@ -401,12 +390,30 @@ class IHeartIterator(WebscrapeIterator):
                 if len(matches) > 0:
                     ret = matches[0]
             assert ret is not None
+
+            return ret
         except AssertionError as exc:
             msg = 'No usable streams could be found on %s'
             vals = (self.stream.url,)
             raise ex.IngestException(msg % vals) from exc
 
-        return ret
+    def _webscrape_extract_media_url(self, txt):
+        # There's a chunk of json in the page with our URLs in it
+        soup = bs4.BeautifulSoup(txt, features='lxml')
+        script = soup.find_all('script', id='initialState')[0].text
+
+        # Get the specific piece of json with the urls of interest
+        stations = json.loads(script)['live']['stations']
+        key = list(stations.keys())[0]
+        streams = stations[key]['streams']
+        urls = streams.values()
+
+        if 'secure_shoutcast_stream' in streams.keys():
+            return streams['secure_shoutcast_stream']
+        elif 'shoutcast_stream' in streams.keys():
+            return streams['shoutcast_stream']
+        else:
+            return self.fallback_url_filter(streams.values())
 
 
 class MediaUrl:
