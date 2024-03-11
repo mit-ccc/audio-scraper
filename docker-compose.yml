@@ -1,3 +1,6 @@
+# FIXME mult-GPU / multi-transcribe worker
+# FIXME cloud deploy? or remove? relevant https://github.com/aws/containers-roadmap/issues/327
+
 version: '3.7'
 
 networks:
@@ -13,8 +16,8 @@ services:
         user: postgres
         networks:
             - stack
-        # volumes:
-        #     - ./data:/usr/src/app/data
+        volumes:
+            - ./data:/usr/src/app/data
         healthcheck:
             test: ["CMD-SHELL", "pg_isready"]
             interval: 10s
@@ -29,8 +32,8 @@ services:
         container_name: ingest
         networks:
             - stack
-        # volumes:
-        #     - ./data:/usr/src/app/data
+        volumes:
+            - ./data:/usr/src/app/data
         depends_on:
             - postgres
         environment:
@@ -39,23 +42,23 @@ services:
         env_file: conf.env
 
     transcribe:
-      build:
-          context: images/transcribe
-      container_name: transcribe
-      networks:
-          - stack
-      # volumes:
-      #     - ./data:/usr/src/app/data
-      depends_on:
-          - postgres
-      environment:
-          - POSTGRES_HOST=postgres
-      restart: always
-      env_file: conf.env
-      deploy:
-          resources:
-              reservations:
-                  devices:
-                      - driver: nvidia
-                        capabilities: [gpu]
-                        device_ids: ['1']
+        build:
+            context: images/transcribe
+        container_name: transcribe
+        networks:
+            - stack
+        volumes:
+            - ./data:/usr/src/app/data
+        depends_on:
+            - postgres
+        environment:
+            - POSTGRES_HOST=postgres
+        restart: always
+        env_file: conf.env
+        deploy:
+            resources:
+                reservations:
+                    devices:
+                        - driver: nvidia
+                          capabilities: [gpu]
+                          device_ids: ['1']

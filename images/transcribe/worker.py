@@ -1,3 +1,5 @@
+# FIXME error threshold not correctly used
+
 from typing import Optional
 
 import sys
