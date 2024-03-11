@@ -184,10 +184,10 @@ class Worker:  # pylint: disable=too-many-instance-attributes
                 from ingest.jobs
                 where
                     not is_locked and
-                    error_count < ?
+                    (? or error_count < ?)
                 order by random()
                 limit 1;
-                ''', (self.chunk_error_threshold,))
+                ''', (self.chunk_error_threshold is None, self.chunk_error_threshold,))
 
                 row = cur.fetchone()
                 if row is None:
