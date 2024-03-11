@@ -375,13 +375,20 @@ class IHeartIterator(WebscrapeIterator):
     This class is used to iterate over the contents of an iHeartRadio page.
     '''
 
+    # FIXME pull some audio from each of these and use ffprobe in addition to
+    # checking extensions
     def fallback_url_filter(self, urls):
         try:
             assert len(urls) > 0
 
             fmts = [
-                'flv', 'mp3', 'aac', 'wma', 'ogg', 'wav', 'flac', # direct streams
-                'm3u8', 'm3u', 'pls', 'asx' #playlists, try second
+                'flv', 'mp3', 'aac', 'wma', 'ogg', 'wav', 'flac',  # direct streams
+
+                # these don't seem to work right and just loop over the same
+                # short piece of audio. possibly they have to be refreshed by
+                # in-page JS, which is way way more trouble than it's worth
+                # when a direct stream is available instead.
+                # 'm3u8', 'm3u', 'pls', 'asx'  # playlists, try second
             ]
 
             ret = None
@@ -406,7 +413,6 @@ class IHeartIterator(WebscrapeIterator):
         stations = json.loads(script)['live']['stations']
         key = list(stations.keys())[0]
         streams = stations[key]['streams']
-        urls = streams.values()
 
         if 'secure_shoutcast_stream' in streams.keys():
             return streams['secure_shoutcast_stream']
