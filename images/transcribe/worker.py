@@ -1,6 +1,5 @@
 from typing import Optional
 
-import gc
 import sys
 import time
 import random
@@ -23,10 +22,12 @@ class TranscribeWorker:  # pylint: disable=too-many-instance-attributes
                  hf_token: Optional[str] = None,
                  dsn: str = 'Database',
                  chunk_error_behavior: str = 'ignore',
-                 chunk_error_threshold: int = 10,
                  poll_interval: int = 10,
                  remove_audio: bool = False):
         super().__init__()
+
+        if chunk_error_behavior not in ('exit', 'ignore'):
+            raise ValueError('chunk_error_behavior must be "exit" or "ignore"')
 
         self.transcriber = Transcriber(
             whisper_version=whisper_version,
@@ -38,16 +39,18 @@ class TranscribeWorker:  # pylint: disable=too-many-instance-attributes
         # No AWS creds - we assume they're in the environment
         self.dsn = dsn
         self.chunk_error_behavior = chunk_error_behavior
-        self.chunk_error_threshold = chunk_error_threshold
         self.poll_interval = poll_interval
         self.remove_audio = remove_audio
 
-        self.db = pyodbc.connect(dsn=self.dsn)
-        self.db.autocommit = True
+        self.db = pyodbc.connect(dsn=self.dsn, autocommit=False)
 
         self.chunk_id = None
         self.url = None
         self.lang = None
+
+    #
+    # Worker properties and management
+    #
 
     def __enter__(self):
         return self
@@ -57,218 +60,142 @@ class TranscribeWorker:  # pylint: disable=too-many-instance-attributes
 
     def close(self):
         '''
-        Tear down the worker's persistent resources: the database connection and
-        the advisory lock on the chunk ID.
+        Tear down the worker's database connection.
         '''
-
-        try:
-            self.release_lock()
-        except Exception:  # pylint: disable=broad-except
-            pass
 
         try:
             self.db.close()
         except Exception:  # pylint: disable=broad-except
             pass
 
-        self.chunk_id = None
+    #
+    # Acquire a task
+    #
 
-        self.url = None
-        self.lang = None
-        self.station = None
-
-    def lock_task(self):
-        '''
-        Lock a task in the database via an advisory lock on the chunk ID, in
-        order to prevent multiple workers from working on the same chunk at
-        the same time.
-        '''
-
-        params = (
-            self.chunk_error_threshold is None,
-            self.chunk_error_threshold,
-            self.chunk_error_threshold is None,
-            self.chunk_error_threshold
-        )
-
-        with self.db.cursor() as cur:
-            cur.execute('''
-            -- SQL ported from https://github.com/chanks/que
-            with recursive job_locks as
-            (
-                select
-                    (j).*,
-                    pg_try_advisory_lock((j).chunk_id) as locked
-                from
-                (
-                    select
-                        j
-                    from app.chunks j
-                    where
-                        ? or
-                        j.error_count < ?
-                    order by chunk_id
-                    limit 1
-                ) as t1
-
-                union all
-
-                (
-                    select
-                        (j).*,
-                        pg_try_advisory_lock((j).chunk_id) as locked
-                    from
-                    (
-                        select
-                        (
-                            select
-                                j
-                            from app.chunks j
-                            where
-                                j.chunk_id > job_locks.chunk_id and
-                                (
-                                    ? or
-                                    j.error_count < ?
-                                )
-                            order by chunk_id
-                            limit 1
-                        ) as j
-                        from job_locks
-                        where
-                            job_locks.chunk_id is not null
-                        limit 1
-                    ) as t1
-                )
-            )
-            select
-                chunk_id
-            from job_locks
-            where
-                locked
-            limit 1;
-            ''', params)
-
-            res = cur.fetchall()
-            return res[0][0] if len(res) > 0 else None
-
-    def release_lock(self):
-        '''
-        Release the lock the worker holds on its chunk. This should be called
-        when the worker exits to avoid orphaning the chunk.
-        '''
-
-        with self.db.cursor() as cur:
-            cur.execute('''
-            select
-                pg_advisory_unlock(?);
-            ''', (self.chunk_id,))
-
-            return cur.fetchone()[0]
-
-    def acquire_task(self):
+    def acquire_task(self, cur):
         '''
         Acquire a task (i.e., chunk to work on) from the database, blocking
         until one is available. Configure the chunk ID and URL on the
         worker from the acquired task.
         '''
 
-        # in a high-concurrency situation, spread out the load on the DB
-        time.sleep(random.uniform(0, 2*self.poll_interval))
+        logger.debug('Began acquiring chunk')
 
         # Use a spinlock; if there's nothing to work on, let's wait around and
         # keep checking if there is
         while True:
-            res = self.lock_task()
-            if res is not None:
+            cur.execute('''
+            select
+                chunk_id
+            from transcribe.jobs
+            order by random()
+            limit 1
+            for update skip locked;
+            ''')
+
+            row  = cur.fetchone()
+            chunk_id = row[0] if row is not None else None
+
+            if chunk_id is not None:
                 break
 
             # nothing to lock
             logger.debug('Nothing to work on; spinning')
             time.sleep(self.poll_interval)
-        self.chunk_id = res
 
-        with self.db.cursor() as cur:
-            cur.execute('''
-            select
-                c.url,
-                s.lang,
-                s.name
-            from app.chunks c
-                inner join data.station s using(station_id)
-            where
-                c.chunk_id = ?;
-            ''', (self.chunk_id,))
+        cur.execute('''
+        select
+            c.url,
+            s.lang,
+            s.name
+        from transcribe.jobs c
+            inner join data.station s using(station_id)
+        where
+            c.chunk_id = ?;
+        ''', (chunk_id,))
 
-            res = cur.fetchone()
-            self.url = res[0]
-            self.lang = res[1]
-            self.station = res[2]
+        res = cur.fetchone()
+
+        self.chunk_id = chunk_id
+        self.url = res[0]
+        self.lang = res[1]
+        self.station = res[2]
+
+        logger.info('Acquired chunk_id %s from %s', self.chunk_id, self.url)
 
         return self
+
+    #
+    # Error handling
+    #
+
+    def mark_failure(self, cur):
+        info = sys.exc_info()
+        info = '' if info == (None, None, None) else str(info)
+
+        cur.execute('''
+        update transcribe.jobs
+        set
+            error_count = error_count + 1,
+            last_error = ?
+        where
+            chunk_id = ?;
+        ''', (info, self.station_id))
+
+        return self
+
+    def mark_success(self, cur):
+        logger.debug('Updating DB to remove chunk %s', self.url)
+        cur.execute('''
+        delete
+        from transcribe.jobs
+        where
+            chunk_id = ?
+        ''', (self.chunk_id,))
+        logger.debug('Removed chunk %s from DB', self.url)
+
+        if self.remove_audio:
+            logger.debug('Removing chunk %s', self.url)
+            chunk.remove()
+            logger.debug('Removed chunk %s', self.url)
+
+        return self
+
+    #
+    # Main loop
+    #
 
     def run(self):
         '''
         Main worker entrypoint. Acquire a task, then ingest its stream.
         '''
 
+        # in a high-concurrency situation, spread out the load on the DB
+        time.sleep(random.uniform(0, 2*self.poll_interval))
+
         while True:
-            logger.debug('Begun acquiring task')
-            self.acquire_task()
-            logger.debug('Acquired task')
+            with self.db.cursor() as cur:
+                self.acquire_task(cur)
 
-            logger.info(
-                'Began processing chunk_id %s from %s',
-                self.chunk_id, self.url
-            )
+                try:
+                    chunk = Chunk(
+                        url=self.url,
+                        station=self.station,
+                        lang=self.lang
+                    )
 
-            try:
-                chunk = Chunk(
-                    url=self.url,
-                    station=self.station,
-                    lang=self.lang
-                )
+                    data = chunk.fetch()
+                    results = self.transcriber.process(data, lang=chunk.lang)
+                    chunk.write_results(results)
 
-                data = chunk.fetch()
-                results = self.transcriber.process(data, lang=chunk.lang)
-                chunk.write_results(results)
+                    logger.info('Successfully transcribed %s', self.url)
+                except Exception:  # pylint: disable=broad-except
+                    logger.exception('Chunk failed')
+                    self.mark_failure(cur)
 
-                logger.info('Successfully transcribed %s', self.url)
-            except Exception:  # pylint: disable=broad-except
-                with self.db.cursor() as cur:
-                    # log the failure; this is concurency-safe because we have
-                    # the lock on this chunk_id
-                    cur.execute('''
-                    update app.chunks
-                    set
-                        error_count = error_count + 1,
-                        last_error = ?
-                    where
-                        chunk_id = ?;
-                    ''', (str(sys.exc_info()), self.chunk_id))
-
-                if self.chunk_error_behavior == 'exit':
-                    raise
-
-                logger.exception('Chunk failed; ignoring')
-            else:
-                # we no longer need this DB entry
-                logger.debug('Updating DB to remove chunk %s', self.url)
-                with self.db.cursor() as cur:
-                    cur.execute('''
-                    delete
-                    from app.chunks
-                    where
-                        chunk_id = ?
-                    ''', (self.chunk_id,))
-                logger.debug('Removed chunk %s from DB', self.url)
-
-                if self.remove_audio:
-                    logger.debug('Removing chunk %s', self.url)
-                    chunk.remove()
-                    logger.debug('Removed chunk %s', self.url)
-            finally:
-                logger.debug('Start garbage collection')
-                gc.collect()
-                logger.debug('End garbage collection')
+                    if self.chunk_error_behavior == 'exit':
+                        raise
+                else:
+                    self.mark_success(cur)
 
         return self

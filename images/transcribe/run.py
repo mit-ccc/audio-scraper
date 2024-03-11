@@ -53,8 +53,7 @@ if __name__ == '__main__':
         'device': os.getenv('DEVICE', None),
         'hf_token': os.getenv('HF_TOKEN', None),
         'dsn': os.getenv('DSN', 'Database'),
-        'chunk_error_behavior': os.getenv('CHUNK_ERROR_BEHAVIOR', 'ignore'),
-        'chunk_error_threshold': int(os.getenv('CHUNK_ERROR_THRESHOLD', '10')),
+        'chunk_error_behavior': os.getenv('TRANSCRIBE_ON_CHUNK_ERROR', 'ignore'),
         'poll_interval': int(os.getenv('POLL_INTERVAL', '60')),
         'remove_audio': os.getenv('REMOVE_AUDIO', 'false').lower() not in ('false', '0', '')
     }
