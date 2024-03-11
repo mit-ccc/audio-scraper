@@ -1,9 +1,9 @@
 '''
 This file is the main file for the audio worker. It downloads the audio stream
-from the remote (e.g., radio station site) and uploads it to S3.
+from the remote (e.g., radio source site) and uploads it to S3.
 '''
 
-# FIXME StopIteration / handling streams that terminate
+# FIXME handle streams that terminate
 
 from typing import Optional
 
@@ -36,18 +36,18 @@ def payload(args):
         with Worker(**args) as worker:
             worker.run()
     except Exception:
-        logger.exception("Error in station ingest")
+        logger.exception("Error in source ingest")
 
         raise
 
 
 class Worker:  # pylint: disable=too-many-instance-attributes
     '''
-    Worker class for audio ingest. The worker acquires a station to ingest from
+    Worker class for audio ingest. The worker acquires a source to ingest from
     the database, downloads the audio stream, and uploads it to S3. The
     database is used for synchronization, with each worker acquiring a lock on
-    the station is is working on. The worker will exit if the station is no
-    longer in the database, or if the station has failed too many times.
+    the source is is working on. The worker will exit if the source is no
+    longer in the database, or if the source has failed too many times.
     '''
 
     # pylint: disable-next=too-many-arguments
@@ -66,9 +66,9 @@ class Worker:  # pylint: disable=too-many-instance-attributes
         self.poll_interval = poll_interval
         self.save_format = save_format
 
-        # properties of the ingested station set in the acquire_task method
-        self.station_id = None
-        self.station = None
+        # properties of the ingested source set in the acquire_task method
+        self.source_id = None
+        self.source = None
         self.stream_url = None
         self.retry_on_close = None
 
@@ -107,7 +107,7 @@ class Worker:  # pylint: disable=too-many-instance-attributes
         '''
         Tear down the worker's persistent resources: the audio stream's network
         connection, the database connection and the advisory lock on the
-        station ID.
+        source ID.
         '''
 
         try:
@@ -136,13 +136,13 @@ class Worker:  # pylint: disable=too-many-instance-attributes
     #
 
     def _write_chunk(self, chunk, start_time, end_time):
-        assert self.station is not None
+        assert self.source is not None
 
         start_time = str(int(start_time * 1000000))
         end_time = str(int(end_time * 1000000))
 
         key = start_time + '-' + end_time + '.' + self.save_format
-        key = os.path.join(self.station, key)
+        key = os.path.join(self.source, key)
 
         if self.storage_mode == 's3':
             s3_bucket = self._store_url_parsed.netloc
@@ -179,7 +179,7 @@ class Worker:  # pylint: disable=too-many-instance-attributes
 
                 cur.execute('''
                 select
-                    station_id
+                    source_id
                 from ingest.jobs
                 where
                     not is_locked and
@@ -191,16 +191,16 @@ class Worker:  # pylint: disable=too-many-instance-attributes
                 row = cur.fetchone()
                 if row is None:
                     return None
-                station_id = row[0]
+                source_id = row[0]
 
                 cur.execute('''
                 update ingest.jobs
                 set is_locked = true
                 where
-                    station_id = ?
-                ''', (station_id,))
+                    source_id = ?
+                ''', (source_id,))
 
-                return station_id
+                return source_id
             except Exception:  # pylint: disable=broad-except
                 cur.rollback()
                 raise
@@ -209,8 +209,8 @@ class Worker:  # pylint: disable=too-many-instance-attributes
 
     def release_lock(self):
         '''
-        Release the lock the worker holds on its station. This should be called
-        when the worker exits to avoid orphaning the station.
+        Release the lock the worker holds on its source. This should be called
+        when the worker exits to avoid orphaning the source.
         '''
 
         with self.db.cursor() as cur:
@@ -221,8 +221,8 @@ class Worker:  # pylint: disable=too-many-instance-attributes
                 update ingest.jobs
                 set is_locked = false
                 where
-                    station_id = ?
-                ''', (self.station_id,))
+                    source_id = ?
+                ''', (self.source_id,))
             except Exception:  # pylint: disable=broad-except
                 cur.rollback()
                 raise
@@ -231,8 +231,8 @@ class Worker:  # pylint: disable=too-many-instance-attributes
 
     def acquire_task(self):
         '''
-        Acquire a task (i.e., station to work on) from the database, blocking
-        until one is available. Configure the station ID and stream URL on the
+        Acquire a task (i.e., source to work on) from the database, blocking
+        until one is available. Configure the source ID and stream URL on the
         worker from the acquired task.
         '''
 
@@ -248,21 +248,21 @@ class Worker:  # pylint: disable=too-many-instance-attributes
 
             logger.debug('Nothing to work on; spinning')
             time.sleep(self.poll_interval)
-        self.station_id = res
+        self.source_id = res
 
         with self.db.cursor() as cur:
             cur.execute('''
             select
-                name as station,
+                name as source,
                 stream_url,
                 retry_on_close
-            from data.station
+            from data.source
             where
-                station_id = ?;
-            ''', (self.station_id,))
+                source_id = ?;
+            ''', (self.source_id,))
 
             res = cur.fetchone()
-            self.station = res[0]
+            self.source = res[0]
             self.stream_url = res[1]
             self.retry_on_close = res[2]
 
@@ -275,14 +275,14 @@ class Worker:  # pylint: disable=too-many-instance-attributes
     def get_stop_conditions(self):
         '''
         Check whether the worker has hit its stop conditions and should exit.
-        The worker will exit if the station is no longer in the database, or if
-        the station has failed too many times.
+        The worker will exit if the source is no longer in the database, or if
+        the source has failed too many times.
         '''
 
         with self.db.cursor() as cur:
             params = (
-                self.station_id,
-                self.station_id,
+                self.source_id,
+                self.source_id,
                 self.chunk_error_threshold
             )
 
@@ -293,7 +293,7 @@ class Worker:  # pylint: disable=too-many-instance-attributes
                         1
                     from ingest.jobs
                     where
-                        station_id = ?
+                        source_id = ?
                 ) as deleted,
 
                 exists(
@@ -301,7 +301,7 @@ class Worker:  # pylint: disable=too-many-instance-attributes
                         1
                     from ingest.jobs
                     where
-                        station_id = ? and
+                        source_id = ? and
 
                         -- the exists() will return false if ? is null
                         -- which happens if self.chunk_error_threshold is None
@@ -319,12 +319,12 @@ class Worker:  # pylint: disable=too-many-instance-attributes
 
         if conds['deleted']:
             msg = "Job %s cancelled"
-            vals = (self.station_id,)
+            vals = (self.source_id,)
             raise ex.JobCancelledException(msg % vals)
 
         if conds['failed']:
             msg = "Job %s had too many failures"
-            vals = (self.station_id,)
+            vals = (self.source_id,)
             raise ex.TooManyFailuresException(msg % vals)
 
         return self
@@ -334,15 +334,15 @@ class Worker:  # pylint: disable=too-many-instance-attributes
         info = '' if info == (None, None, None) else str(info)
 
         with self.db.cursor() as cur:
-            # concurency-safe because we have the lock on this station_id
+            # concurency-safe because we have the lock on this source_id
             cur.execute('''
             update ingest.jobs
             set
                 error_count = error_count + 1,
                 last_error = ?
             where
-                station_id = ?;
-            ''', (info, self.station_id))
+                source_id = ?;
+            ''', (info, self.source_id))
 
     def mark_success(self, url):
         logger.debug('Chunk queued')
@@ -350,10 +350,10 @@ class Worker:  # pylint: disable=too-many-instance-attributes
         with self.db.cursor() as cur:
             cur.execute('''
             insert into transcribe.jobs
-                (station_id, url)
+                (source_id, url)
             values
                 (?, ?);
-            ''', (self.station_id, url))
+            ''', (self.source_id, url))
 
     #
     # Main loop
@@ -389,7 +389,7 @@ class Worker:  # pylint: disable=too-many-instance-attributes
             self.mark_failure()
 
             if isinstance(exc, StopIteration):
-                logger.warning('Station %s ran out of audio', self.station)
+                logger.warning('Source %s ran out of audio', self.source)
                 raise
         else:
             self.mark_success(out_url)
@@ -403,7 +403,7 @@ class Worker:  # pylint: disable=too-many-instance-attributes
 
         self.acquire_task()
 
-        logger.info('Began ingest: %s from %s', self.station, self.stream_url)
+        logger.info('Began ingest: %s from %s', self.source, self.stream_url)
 
         while True:
             self.stop_if_error()

@@ -134,9 +134,9 @@ class ChunkLoader:
 
         return queue
 
-    def get_station_ids(self):
+    def get_source_ids(self):
         with self.db.cursor() as cur:
-            cur.execute('select name, station_id from data.station')
+            cur.execute('select name, source_id from data.source')
             ret = dict(cur.fetchall())
 
         return ret
@@ -169,19 +169,19 @@ class ChunkLoader:
 
     def run(self):
         queue = self.unprocessed_files()
-        station_ids = self.get_station_ids()
+        source_ids = self.get_source_ids()
 
         rows = []
         for prefix, file in queue:
-            if prefix not in station_ids.keys():
-                logger.warning(f'station {prefix} not in configured stations')
+            if prefix not in source_ids.keys():
+                logger.warning(f'source {prefix} not in configured sources')
                 continue
 
-            station_id = station_ids[prefix]
+            source_id = source_ids[prefix]
             url = os.path.join(self.store_url, prefix, file)
 
             rows += [{
-                'station_id': station_id,
+                'source_id': source_id,
                 'url': url,
             }]
 

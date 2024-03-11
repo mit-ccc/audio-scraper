@@ -108,7 +108,7 @@ class TranscribeWorker:  # pylint: disable=too-many-instance-attributes
             s.lang,
             s.name
         from transcribe.jobs c
-            inner join data.station s using(station_id)
+            inner join data.source s using(source_id)
         where
             c.chunk_id = ?;
         ''', (chunk_id,))
@@ -118,7 +118,7 @@ class TranscribeWorker:  # pylint: disable=too-many-instance-attributes
         self.chunk_id = chunk_id
         self.url = res[0]
         self.lang = res[1]
-        self.station = res[2]
+        self.source = res[2]
 
         logger.info('Acquired chunk_id %s from %s', self.chunk_id, self.url)
 
@@ -139,7 +139,7 @@ class TranscribeWorker:  # pylint: disable=too-many-instance-attributes
             last_error = ?
         where
             chunk_id = ?;
-        ''', (info, self.station_id))
+        ''', (info, self.source_id))
 
         return self
 
@@ -179,7 +179,7 @@ class TranscribeWorker:  # pylint: disable=too-many-instance-attributes
                 try:
                     chunk = Chunk(
                         url=self.url,
-                        station=self.station,
+                        source=self.source,
                         lang=self.lang
                     )
 

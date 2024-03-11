@@ -1,4 +1,0 @@
-station_id	name	stream_url	auto_ingest	lang	retry_on_close
-1	WXYZ-FM	https://www.example.com/playlist.m3u	False		False
-2	KABC-AM	http://stream.example.com/listen-live	True	en	True
-3	WWWW-FM	https://www.example.com/radio-stream-wwww.pls	False	fr	False

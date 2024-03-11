@@ -3,8 +3,8 @@
 set -Eeuo pipefail
 
 psql <<"EOF"
-COPY data.station
-FROM '/usr/src/app/station-data.csv'
+COPY data.source
+FROM '/usr/src/app/source-data.csv'
 WITH (
     FORMAT csv,
     HEADER MATCH,

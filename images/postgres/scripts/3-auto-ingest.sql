@@ -1,9 +1,9 @@
 begin;
     insert into ingest.jobs
-        (station_id)
+        (source_id)
     select
-        ds.station_id
-    from data.station ds
+        ds.source_id
+    from data.source ds
     where
         ds.auto_ingest;
 commit;

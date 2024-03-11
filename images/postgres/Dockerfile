@@ -12,4 +12,6 @@ RUN apt-get clean
 COPY ./scripts/ /docker-entrypoint-initdb.d/
 
 RUN mkdir -p /usr/src/app
-COPY ./data/station-data.csv /usr/src/app
+COPY ./data/source-data.csv /usr/src/app
+
+USER postgres
