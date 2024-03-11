@@ -31,6 +31,7 @@ create table ingest.jobs
                references data.station
                on delete restrict,
 
+    is_locked bool not null default false,
     create_dt timestamptz not null default now(),
     error_count integer not null default 0,
     last_error text
