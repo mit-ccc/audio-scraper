@@ -74,6 +74,13 @@ spec:
         app.kubernetes.io/component: postgres
     spec:
       restartPolicy: Always
+      initContainers:
+        - name: volume-permissions
+          image: busybox
+          command: ['sh', '-c', 'chown -R 999:999 /var/lib/postgresql/data']
+          volumeMounts:
+            - name: postgres-storage
+              mountPath: /var/lib/postgresql/data
       containers:
         - name: postgres
           image: audio-scraper-postgres
