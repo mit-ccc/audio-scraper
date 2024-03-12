@@ -31,7 +31,7 @@ delete:
 	@minikube delete
 
 dashboard:
-	@minikube dashboard
+	@minikube dashboard --url=true
 
 status:
 	@minikube status
