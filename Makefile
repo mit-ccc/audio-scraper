@@ -2,16 +2,15 @@ SHELL := /bin/bash
 
 .PHONY: up containers secrets start stop delete dashboard status clean
 
-up: containers secrets
+up: start containers secrets
 	@minikube kubectl -- apply -f deploy.yaml
 
-containers: start
-	@set -Eeuo pipefail && \
+containers:
+	set -Eeuo pipefail && \
 	eval $$(minikube docker-env) && \
-	while IFS= read -r -d '' target \
-	do \
-		docker build -t "audio-scraper-$$target" "images/$$target"; \
-	done <  <(find images/ -depth 1 -type d -exec basename {} \;)
+	for target in images/*; do \
+		docker build -t "audio-scraper-$$(basename "$$target")" "$$target"; \
+	done
 
 secrets:
 	@minikube kubectl -- delete secret env-secrets 2>&1 1>/dev/null || true
