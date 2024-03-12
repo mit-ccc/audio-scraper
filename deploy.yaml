@@ -112,6 +112,13 @@ spec:
             failureThreshold: 5
             periodSeconds: 10
             timeoutSeconds: 5
+          resources:
+            requests:
+              cpu: 50m
+              memory: 50Mi
+            limits:
+              cpu: 1000m
+              memory: 256Mi
 
 ---
 
@@ -155,6 +162,13 @@ spec:
                 name: env-configmap
             - secretRef:
                 name: env-secrets
+          resources:
+            requests:
+              cpu: 384m
+              memory: 192Mi
+            limits:
+              cpu: 1000m
+              memory: 256Mi
 
 ---
 
@@ -199,5 +213,10 @@ spec:
             - secretRef:
                 name: env-secrets
           resources:
+            requests:
+              cpu: 1100m
+              memory: 3584Mi
             limits:
+              cpu: 2000m
+              memory: 5120Mi
               nvidia.com/gpu: 1
