@@ -21,12 +21,30 @@ data:
 ---
 
 apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-service
+  labels:
+    app.kubernetes.io/name: audio-scraper
+    app.kubernetes.io/component: postgres
+spec:
+  selector:
+    app.kubernetes.io/name: audio-scraper
+    app.kubernetes.io/component: postgres
+  ports:
+    - protocol: TCP
+      port: 5432
+      targetPort: 5432
+
+---
+
+apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: postgres-pvc
   labels:
     app.kubernetes.io/name: audio-scraper
-    app.kubernetes.io/component: ingest
+    app.kubernetes.io/component: postgres
 spec:
   accessModes:
     - ReadWriteOncePod
@@ -103,6 +121,9 @@ spec:
       containers:
         - name: ingest
           image: audio-scraper-ingest
+          env:
+            - name: POSTGRES_HOST
+              value: postgres-service
           envFrom:
             - configMapRef:
                 name: env-configmap
@@ -134,6 +155,9 @@ spec:
       containers:
         - name: transcribe
           image: audio-scraper-transcribe
+          env:
+            - name: POSTGRES_HOST
+              value: postgres-service
           envFrom:
             - configMapRef:
                 name: env-configmap
