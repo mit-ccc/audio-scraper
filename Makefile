@@ -28,6 +28,7 @@ delete: start
 	@minikube delete
 
 dashboard: start
+	@minikube addons enable metrics-server
 	@minikube dashboard
 
 status: start
