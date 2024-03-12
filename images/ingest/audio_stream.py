@@ -530,7 +530,8 @@ class AudioStream(MediaUrl):
         if cls is not None:
             self._iterator = cls(stream=self)
         else:
-            raise NotImplementedError('No iterator found for %s' % (self.url,))
+            msg = f'No iterator found for {self.url} with _ext = {self._ext}'
+            raise NotImplementedError(msg)
 
         logger.debug('AudioStream up for %s; _ext = %s; iterator class %s',
                      self.url, self._ext, type(self._iterator).__name__)

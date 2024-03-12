@@ -10,7 +10,9 @@ import multiprocessing as mp
 import exceptions as ex
 from worker import payload
 
+
 logger = logging.getLogger(__name__)
+
 
 class Pool:
     '''
@@ -49,14 +51,10 @@ class Pool:
 
                 for (ind, res) in enumerate(results):
                     if res.ready():
-                        if res.successful():
-                            msg = "Incorrect termination by ingest worker"
-                            raise ex.IngestException(msg)
-
                         try:
                             res.get()
                         except Exception:  # pylint: disable=broad-except
                             logger.exception("Worker exited")
 
-                        # Respawn the task after it exited
+                        # Respawn the task after exit
                         results[ind] = pool.apply_async(payload, (self.worker_args,))

@@ -3,8 +3,6 @@ This file is the main file for the audio worker. It downloads the audio stream
 from the remote (e.g., radio source site) and uploads it to S3.
 '''
 
-# FIXME handle streams that terminate
-
 from typing import Optional
 
 import io
@@ -116,7 +114,7 @@ class Worker:  # pylint: disable=too-many-instance-attributes
             pass
 
         try:
-            self.release_lock()
+            self.unlock_task()
         except Exception:  # pylint: disable=broad-except
             pass
 
@@ -207,7 +205,7 @@ class Worker:  # pylint: disable=too-many-instance-attributes
             else:
                 cur.commit()
 
-    def release_lock(self):
+    def unlock_task(self):
         '''
         Release the lock the worker holds on its source. This should be called
         when the worker exits to avoid orphaning the source.
@@ -220,6 +218,29 @@ class Worker:  # pylint: disable=too-many-instance-attributes
                 cur.execute('''
                 update ingest.jobs
                 set is_locked = false
+                where
+                    source_id = ?
+                ''', (self.source_id,))
+            except Exception:  # pylint: disable=broad-except
+                cur.rollback()
+                raise
+            else:
+                cur.commit()
+
+    def delete_task(self):
+        '''
+        Delete a successfully completed source. Do NOT release the lock first,
+        because then another worker may pick up the source to work on before we
+        delete it.
+        '''
+
+        with self.db.cursor() as cur:
+            try:
+                cur.execute('lock table ingest.jobs in exclusive mode;')
+
+                cur.execute('''
+                delete
+                from ingest.jobs
                 where
                     source_id = ?
                 ''', (self.source_id,))
@@ -384,13 +405,11 @@ class Worker:  # pylint: disable=too-many-instance-attributes
             end_time = time.time()
 
             out_url = self._write_chunk(chunk, start_time, end_time)
-        except Exception as exc:  # pylint: disable=broad-except
+        except StopIteration:
+            raise
+        except Exception:  # pylint: disable=broad-except
             logger.exception('Ingest failure')
             self.mark_failure()
-
-            if isinstance(exc, StopIteration):
-                logger.warning('Source %s ran out of audio', self.source)
-                raise
         else:
             self.mark_success(out_url)
 
@@ -408,6 +427,15 @@ class Worker:  # pylint: disable=too-many-instance-attributes
         while True:
             self.stop_if_error()
             self.ensure_stream()
-            self.process_next_chunk()
+
+            try:
+                self.process_next_chunk()
+            except StopIteration:
+                logger.info('Source %s (%s) ran out of audio',
+                            self.source_id, self.source)
+
+                self.delete_task()  # successful completion
+
+                break
 
         return self
