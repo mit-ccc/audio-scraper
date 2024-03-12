@@ -1,11 +1,9 @@
 SHELL := /bin/bash
 
-.PHONY: up down containers secrets start stop delete dashboard status clean
+.PHONY: up containers secrets start stop delete dashboard status clean
 
 up: containers secrets
 	@minikube kubectl apply -f manifest.yaml
-
-down: stop
 
 containers: start
 	@set -Eeuo pipefail && \
@@ -19,19 +17,19 @@ secrets: start
 	@minikube kubectl create secret generic env-secrets --from-env-file=secrets.env
 
 start:
-	@minikube start --driver=docker --memory 4096 --cpus 2
+	@minikube start --driver=docker --memory 4096 --cpus 2 --disk-size=50g
+	@minikube addons enable metrics-server
 
 stop:
 	@minikube stop
 
-delete: start
+delete:
 	@minikube delete
 
-dashboard: start
-	@minikube addons enable metrics-server
+dashboard:
 	@minikube dashboard
 
-status: start
+status:
 	@minikube status
 
 clean:
