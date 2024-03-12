@@ -20,9 +20,10 @@ secrets:
 	@minikube kubectl -- create secret generic env-secrets --from-env-file=secrets.env
 
 start:
-	@minikube start --driver=docker --addons=nvidia-gpu-device-plugin \
+	@minikube start --driver=docker --container-runtime=docker --gpus all \
 		--memory 4096 --cpus 2 --disk-size=50g \
 		--mount --mount-string "$$(pwd)/data:/hostdata"
+	@minikube addons enable nvidia-gpu-device-plugin
 	@minikube addons enable metrics-server
 
 stop:
