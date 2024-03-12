@@ -50,7 +50,7 @@ if __name__ == '__main__':
         'store_url': store_url,
 
         'dsn': os.getenv('DSN', 'Database'),
-        'n_tasks': int(os.getenv('N_TASKS', '10')),
+        'n_tasks': int(os.getenv('INGEST_N_TASKS_PER_CONTAINER', '10')),
         'poll_interval': float(os.getenv('POLL_INTERVAL', '60')),
 
         'chunk_size_seconds': int(os.getenv('CHUNK_SIZE_SECONDS', '30')),
