@@ -18,7 +18,6 @@ data:
 
   WHISPER_VERSION: large-v3
   COMPUTE_TYPE: int8
-  DEVICE: cpu
   REMOVE_AUDIO: 'false'
   TRANSCRIBE_CHUNK_ERROR_THRESHOLD: '1'
 ---
