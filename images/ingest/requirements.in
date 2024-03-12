@@ -7,3 +7,4 @@ lxml
 pydub
 simpleaudio
 ffmpeg-python
+fake-useragent
