@@ -3,7 +3,7 @@ SHELL := /bin/bash
 .PHONY: up containers secrets start stop delete dashboard status clean
 
 up: containers secrets
-	@minikube kubectl apply -f manifest.yaml
+	@minikube kubectl apply -f deploy.yaml
 
 containers: start
 	@set -Eeuo pipefail && \
@@ -43,8 +43,3 @@ clean:
 	find . -name env -type d   -not -path '*/\.git/*' -exec rm -rf {} \+
 	find . -name '__pycache__' -not -path '*/\.git/*' -exec rm -rf {} \+
 	find . -name '.mypy_cache' -not -path '*/\.git/*' -exec rm -rf {} \+
-
-# deploy: conf.env deploy/infra.yml
-# 	set -a && source conf.env && ./deploy/containers.sh \
-# 		&& ./deploy/ensure-secret.sh \
-# 		&& ./deploy/infra.sh
