@@ -1,4 +1,4 @@
-conf.env
+secrets.env
 data
 
 # Byte-compiled / optimized / DLL files
