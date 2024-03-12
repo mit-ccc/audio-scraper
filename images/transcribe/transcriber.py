@@ -1,6 +1,5 @@
 from typing import Optional
 
-import os
 import logging
 
 import torch

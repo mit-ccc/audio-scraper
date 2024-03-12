@@ -44,6 +44,7 @@ class TranscribeWorker:  # pylint: disable=too-many-instance-attributes
         self.chunk_id = None
         self.url = None
         self.lang = None
+        self.source = None
 
     #
     # Worker properties and management
@@ -92,7 +93,7 @@ class TranscribeWorker:  # pylint: disable=too-many-instance-attributes
             for update skip locked;
             ''', (self.chunk_error_threshold is None, self.chunk_error_threshold))
 
-            row  = cur.fetchone()
+            row = cur.fetchone()
             chunk_id = row[0] if row is not None else None
 
             if chunk_id is not None:
@@ -139,7 +140,7 @@ class TranscribeWorker:  # pylint: disable=too-many-instance-attributes
             last_error = ?
         where
             chunk_id = ?;
-        ''', (info, self.source_id))
+        ''', (info, self.chunk_id))
 
         return self
 
@@ -152,11 +153,6 @@ class TranscribeWorker:  # pylint: disable=too-many-instance-attributes
             chunk_id = ?
         ''', (self.chunk_id,))
         logger.debug('Removed chunk %s from DB', self.url)
-
-        if self.remove_audio:
-            logger.debug('Removing chunk %s', self.url)
-            chunk.remove()
-            logger.debug('Removed chunk %s', self.url)
 
         return self
 
@@ -192,9 +188,15 @@ class TranscribeWorker:  # pylint: disable=too-many-instance-attributes
                     logger.exception('Chunk failed')
                     self.mark_failure(cur)
 
+                    # FIXME
                     if self.chunk_error_behavior == 'exit':
                         raise
                 else:
                     self.mark_success(cur)
+
+                    if self.remove_audio:
+                        logger.debug('Removing chunk %s', self.url)
+                        chunk.remove()
+                        logger.debug('Removed chunk %s', self.url)
 
         return self
