@@ -41,17 +41,3 @@ SQL:
   time, so you'll need as many workers as there are stations.
 * On AWS, there's autoscaling support but no autoscaling policy, so you'll
   have to manually adjust the desired count of worker tasks in the AWS console.
-
-## Architecture and source data
-The application architecture at the moment is summarized by the following
-diagram:
-
-![Talk radio ingest architecture](./talk-radio-ingest-architecture.png)
-
-## Areas for improvement
-* No autoscaling: While the ECS cluster has Fargate-managed infrastructure that
-  supports autoscaling, there's no actual autoscaling policy defined, just a
-  static desired task count. The number of queued jobs has nothing to do
-  with the amount of provisioned capacity. If you want to add more tasks once
-  the cluster is running, you'll have to edit the desired count in the AWS web
-  console.
