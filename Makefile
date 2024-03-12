@@ -16,7 +16,7 @@ containers:
 	done
 
 secrets:
-	@minikube kubectl -- delete secret env-secrets 2>&1 1>/dev/null || true
+	@minikube kubectl -- delete secret env-secrets > /dev/null 2>&1 || true
 	@minikube kubectl -- create secret generic env-secrets --from-env-file=secrets.env
 
 start:
