@@ -1,0 +1,142 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: env-configmap
+  labels:
+    app.kubernetes.io/name: audio-scraper
+    app.kubernetes.io/component: env-configmap
+data:
+  STORE_URL: 's3://wbrannon-lsm-data/speechbox/'
+  CHUNK_ERROR_THRESHOLD: '1'
+  CHUNK_SIZE_SECONDS: '30'
+  N_TASKS: '10'
+  LOG_LEVEL: 'INFO'
+  POLL_INTERVAL: '10'
+
+  WHISPER_VERSION: 'large-v3'
+  COMPUTE_TYPE: 'int8'
+  DEVICE: 'cpu'
+  REMOVE_AUDIO: 'false'
+
+---
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-pvc
+  labels:
+    app.kubernetes.io/name: audio-scraper
+    app.kubernetes.io/component: ingest
+spec:
+  accessModes:
+    - ReadWriteOncePod
+  resources:
+    requests:
+      storage: 1Gi
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  labels:
+    app.kubernetes.io/name: audio-scraper
+    app.kubernetes.io/component: postgres
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: audio-scraper
+      app.kubernetes.io/component: postgres
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: audio-scraper
+        app.kubernetes.io/component: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: audio-scraper-postgres
+          volumeMounts:
+            - mountPath: '/var/lib/postgresql/data'
+              name: postgres-storage
+          envFrom:
+            - configMapRef:
+                name: env-configmap
+            - secretRef:
+                name: env-secrets
+          livenessProbe:
+            exec:
+              command:
+                - pg_isready
+            failureThreshold: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+      volumes:
+      - name: postgres-storage
+        persistentVolumeClaim:
+          claimName: postgres-pvc
+      restartPolicy: Always
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ingest
+  labels:
+    app.kubernetes.io/name: audio-scraper
+    app.kubernetes.io/component: ingest
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: audio-scraper
+      app.kubernetes.io/component: ingest
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: audio-scraper
+        app.kubernetes.io/component: ingest
+    spec:
+      containers:
+        - name: ingest
+          image: audio-scraper-ingest
+          envFrom:
+            - configMapRef:
+                name: env-configmap
+            - secretRef:
+                name: env-secrets
+      restartPolicy: Always
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: transcribe
+  labels:
+    app.kubernetes.io/name: audio-scraper
+    app.kubernetes.io/component: transcribe
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: audio-scraper
+      app.kubernetes.io/component: transcribe
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: audio-scraper
+        app.kubernetes.io/component: transcribe
+    spec:
+      containers:
+        - name: transcribe
+          image: audio-scraper-transcribe
+          envFrom:
+            - configMapRef:
+                name: env-configmap
+            - secretRef:
+                name: env-secrets
+      restartPolicy: Always

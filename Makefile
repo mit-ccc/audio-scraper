@@ -1,19 +1,37 @@
 SHELL := /bin/bash
 
-.PHONY: up down deploy clean
+.PHONY: up down containers secrets start stop delete dashboard status clean
 
-up: containers down
-	docker compose up --remove-orphans --scale transcribe=0
+up: containers secrets
+	@minikube kubectl apply -f manifest.yaml
 
-containers:
-	set -Eeuo pipefail && \
+down: stop
+
+containers: start
+	@set -Eeuo pipefail && \
+	eval $$(minikube docker-env) && \
 	for target in $$(find images/ -depth 1 -type d -exec basename {} \;); do \
 		docker build -t "audio-scraper-$$target" "images/$$target"; \
 	done
 
-down: conf.env docker-compose.yml
-	docker compose down
-	docker compose rm -fsv
+secrets: start
+	@minikube kubectl delete secret env-secrets || true
+	@minikube kubectl create secret generic env-secrets --from-env-file=secrets.env
+
+start:
+	@minikube start --driver=docker --memory 4096 --cpus 2
+
+stop:
+	@minikube stop
+
+delete: start
+	@minikube delete
+
+dashboard: start
+	@minikube dashboard
+
+status: start
+	@minikube status
 
 clean:
 	find . -name '*.pyc'       -not -path '*/\.git/*' -exec rm -f {} \+
@@ -26,7 +44,7 @@ clean:
 	find . -name '__pycache__' -not -path '*/\.git/*' -exec rm -rf {} \+
 	find . -name '.mypy_cache' -not -path '*/\.git/*' -exec rm -rf {} \+
 
-deploy: conf.env deploy/infra.yml
-	set -a && source conf.env && ./deploy/containers.sh \
-		&& ./deploy/ensure-secret.sh \
-		&& ./deploy/infra.sh
+# deploy: conf.env deploy/infra.yml
+# 	set -a && source conf.env && ./deploy/containers.sh \
+# 		&& ./deploy/ensure-secret.sh \
+# 		&& ./deploy/infra.sh
