@@ -1,9 +1,12 @@
 SHELL := /bin/bash
 
-.PHONY: up containers secrets start stop delete dashboard status clean
+.PHONY: up down containers secrets start stop delete dashboard status clean
 
 up: start containers secrets
 	@minikube kubectl -- apply -f deploy.yaml
+
+down:
+	@minikube kubectl -- delete -f deploy.yaml > /dev/null 2>&1 || true
 
 containers:
 	set -Eeuo pipefail && \
