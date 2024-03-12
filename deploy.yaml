@@ -77,6 +77,7 @@ spec:
       containers:
         - name: postgres
           image: audio-scraper-postgres
+          imagePullPolicy: IfNotPresent
           volumeMounts:
             - mountPath: '/var/lib/postgresql/data'
               name: postgres-storage
@@ -122,6 +123,7 @@ spec:
       containers:
         - name: ingest
           image: audio-scraper-ingest
+          imagePullPolicy: IfNotPresent
           env:
             - name: POSTGRES_HOST
               value: postgres-service
@@ -156,6 +158,7 @@ spec:
       containers:
         - name: transcribe
           image: audio-scraper-transcribe
+          imagePullPolicy: IfNotPresent
           env:
             - name: POSTGRES_HOST
               value: postgres-service
