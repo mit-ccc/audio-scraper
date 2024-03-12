@@ -3,7 +3,7 @@ SHELL := /bin/bash
 .PHONY: up containers secrets start stop delete dashboard status clean
 
 up: containers secrets
-	@minikube kubectl apply -f deploy.yaml
+	@minikube kubectl -- apply -f deploy.yaml
 
 containers: start
 	@set -Eeuo pipefail && \
@@ -13,9 +13,9 @@ containers: start
 		docker build -t "audio-scraper-$$target" "images/$$target"; \
 	done <  <(find images/ -depth 1 -type d -exec basename {} \;)
 
-secrets: start
-	@minikube kubectl delete secret env-secrets || true
-	@minikube kubectl create secret generic env-secrets --from-env-file=secrets.env
+secrets:
+	@minikube kubectl -- delete secret env-secrets 2>&1 1>/dev/null || true
+	@minikube kubectl -- create secret generic env-secrets --from-env-file=secrets.env
 
 start:
 	@minikube start --driver=docker --addons=nvidia-gpu-device-plugin \
