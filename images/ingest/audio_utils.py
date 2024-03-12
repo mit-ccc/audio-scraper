@@ -1,6 +1,5 @@
 import json
 import logging
-import mimetypes as mt
 import subprocess as sp
 
 import ffmpeg
@@ -34,17 +33,6 @@ def probe_format(data, timeout=None):
         return None
 
 
-def autodetect_ext_ffprobe(url):
-    kwargs = {'url': url, 'stream': True, 'timeout': 10}
-    with rq.get(**kwargs) as resp:
-        if not resp.ok:
-            resp.raise_for_status()
-
-        chunk = next(iter(resp.iter_content(chunk_size=2**17)))
-
-    return probe_format(chunk)
-
-
 def discover_sample_rate(data):
     try:
         probe_result = probe(data)
@@ -62,34 +50,3 @@ def discover_sample_rate(data):
     except ffmpeg.Error as exc:
         msg = f'Error probing for sample rate: {exc.stderr.decode()}'
         raise ex.IngestException(msg) from exc
-
-
-def autodetect_ext_mime_type(url):
-    try:
-        # Open a stream to it and guess by MIME type
-        args = {'url': url, 'stream': True, 'timeout': 10}
-
-        with rq.get(**args) as resp:
-            mimetype = resp.headers.get('Content-Type')
-
-            if mimetype is None:
-                autoext = ''
-            else:
-                if ';' in mimetype:
-                    mimetype = mimetype.split(';')[0]
-
-                autoext = mt.guess_extension(mimetype)
-                if autoext is None:
-                    autoext = ''
-                else:
-                    autoext = autoext[1:]
-
-        ext = autoext
-    except Exception:  # pylint: disable=broad-except
-        msg = 'Encountered exception while guessing stream type'
-        logger.warning(msg)
-
-        ext = ''
-
-    return ext
-

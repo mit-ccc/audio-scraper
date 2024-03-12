@@ -1,5 +1,3 @@
-# FIXME file URLs?
-
 '''
 This module defines the AudioStream class, which represents a single
 audio stream. It also contains the MediaIterator class, which is used
@@ -12,6 +10,7 @@ import io
 import re
 import json
 import logging
+import mimetypes as mt
 import itertools as it
 import subprocess as sp
 import configparser as cp
@@ -26,18 +25,13 @@ import ffmpeg
 import requests as rq
 
 from pydub import AudioSegment
+from fake_useragent import UserAgent
 
 import audio_utils as au
 import exceptions as ex
 
 
 logger = logging.getLogger(__name__)
-
-
-# FIXME replace
-DEFAULT_USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) ' \
-                     'AppleWebKit/537.36 (KHTML, like Gecko) ' \
-                     'Chrome/119.0.0.0 Safari/537.36'
 
 
 class DirectMediaType(Enum):
@@ -96,30 +90,15 @@ class MediaIterator(ABC):
             raise ValueError("Must pass stream object") from exc
 
         self.timeout = kwargs.pop('timeout', 10)
-        self.user_agent = kwargs.pop('user_agent', DEFAULT_USER_AGENT)
 
         super().__init__(**kwargs)
 
         # Must be defined in subclasses by the _refresh method
         self.content = NotImplemented
 
-        # We should assume that when these objects are created, we're
-        # at the top of some loop, so there's no need to suspend
-        # network I/O for later
-        self.session = rq.Session()
         self._refresh()
 
         self.retry_error_cnt = 0
-
-    def close(self):
-        '''
-        Close the underlying network connection.
-        '''
-
-        try:
-            self.session.close()
-        except Exception:  # pylint: disable=broad-except
-            pass
 
     @abstractmethod
     def _refresh(self):
@@ -148,34 +127,6 @@ class MediaIterator(ABC):
                 else:
                     raise
 
-    def _fetch_url_stream_safe(self, url=None, max_size=2**20):
-        # This method is called by subclasses which expect self.stream.url
-        # to be a short text file (playlist or web page), but need to be
-        # robust to the possibility of server misconfiguration actually
-        # returning an audio stream. Trying to fetch the whole thing would
-        # cause the process to hang and eventually lead to out-of-memory
-        # errors. Instead we'll fetch it as a stream and return only the
-        # first max_size decoded bytes.
-        if url is None:
-            url = self.stream.url
-
-        headers = {'User-Agent': self.user_agent}
-        resp = self.session.get(url, stream=True, timeout=self.timeout,
-                                headers=headers)
-
-        if not resp.ok:
-            resp.raise_for_status()
-
-        txt = resp.raw.read(max_size + 1, decode_content=True)
-
-        if len(txt) > max_size:
-            msg = 'Too large a response - is it actually an audio file?'
-            raise ValueError(msg)
-
-        return txt
-
-    next = __next__
-
 
 class DirectStreamIterator(MediaIterator):
     '''
@@ -184,12 +135,7 @@ class DirectStreamIterator(MediaIterator):
     '''
 
     def _refresh(self):
-        self.conn = self.session.get(
-            self.stream.url,
-            stream=True,
-            timeout=self.timeout,
-            headers={'User-Agent': self.user_agent},
-        )
+        self.conn = self.stream._get(stream=True)
 
         chunk_size = self.stream.raw_chunk_size_bytes
         content = self.conn.iter_content(chunk_size=chunk_size)
@@ -216,7 +162,7 @@ class PlaylistIterator(MediaIterator):
 
     def _refresh(self):
         # get the URLs
-        txt = self._fetch_url_stream_safe(max_size=2**16)
+        txt = self.stream._fetch_url_stream_safe(max_size=2**16)
         comps = self._get_component_urls(txt.decode())
 
         # make streams out of them
@@ -291,7 +237,7 @@ class M3uIterator(PlaylistIterator):
         else:
             urls = []
             for subpls in pls.playlists:
-                subtxt = self._fetch_url_stream_safe(subpls.uri)
+                subtxt = self.stream._fetch_url_stream_safe(subpls.uri)
                 urls += self._get_component_urls(subtxt.decode(), i=i+1)
 
         return urls
@@ -313,7 +259,7 @@ class WebscrapeIterator(MediaIterator):
         raise NotImplementedError(msg)
 
     def _refresh(self):
-        txt = self._fetch_url_stream_safe(max_size=2**20)
+        txt = self.stream._fetch_url_stream_safe(max_size=2**20)
         url = self._webscrape_extract_media_url(txt)
 
         # we'll just proxy for an iterator on the real stream
@@ -355,7 +301,9 @@ class WebscrapeIterator(MediaIterator):
         fmts = [x.value for x in DirectMediaType]
 
         for url in urls:
-            ext = au.autodetect_ext_ffprobe(url)
+            chunk = self.stream._fetch_probe_chunk()
+            ext = au.probe_format(chunk)
+
             if ext in fmts:
                 return url
 
@@ -414,7 +362,7 @@ class MediaUrl:
 
     def __init__(self, **kwargs):
         try:
-            self.url = kwargs.pop('url')
+            url = kwargs.pop('url')
         except KeyError as exc:
             raise ValueError("Must provide url") from exc
 
@@ -422,23 +370,61 @@ class MediaUrl:
 
         super().__init__(**kwargs)
 
-        ext = self._parse_ext()
-        if ext is not None and ext != '':
-            self._ext = ext
-        elif autodetect:
-            try:
-                self._ext = au.autodetect_ext_ffprobe(self.url)
-            except Exception:  # pylint: disable=broad-except
-                self._ext = au.autodetect_ext_mime_type(self.url)
+        self.url = url
+        self.autodetect = autodetect
 
-        else:
+        self.session = rq.Session()
+        self.session.headers.update({'User-Agent': UserAgent().random})
+
+        self.timeout = kwargs.pop('timeout', 10)
+
+        try:
+            self._ext = self._detect_ext()
+        except Exception:  # pylint: disable=broad-except
+            msg = 'Encountered exception while guessing stream type'
+            logger.warning(msg)
+
             self._ext = ''
+
+    def _detect_ext(self):
+        pa_ext = self._parse_ext()
+
+        if pa_ext != '' or not self.autodetect:
+            return pa_ext
+
+        au_ext = self._autodetect_ext_ffprobe()
+        if au_ext is not None:
+            return au_ext
+
+        mt_ext = self._autodetect_ext_mime_type()
+        if mt_ext is not None:
+            return mt_ext
+
+        return ''
 
     def _parse_ext(self):
         pth = urlparse.urlparse(self.url).path
         ext = os.path.splitext(os.path.basename(pth))[1][1:]
 
         return ext
+
+    def _autodetect_ext_ffprobe(self):
+        chunk = self._fetch_probe_chunk()
+
+        return au.probe_format(chunk)
+
+    def _autodetect_ext_mime_type(self):
+        with self._get(stream=True) as resp:
+            mimetype = resp.headers.get('Content-Type')
+
+        if mimetype is None:
+            return ''
+
+        if ';' in mimetype:
+            mimetype = mimetype.split(';')[0]
+
+        ext = mt.guess_extension(mimetype)
+        return '' if ext is None else ext[1:]
 
     @property
     def _is_iheart(self):
@@ -474,6 +460,41 @@ class MediaUrl:
             return WebscrapeMediaType(ext)
 
         return None
+
+    def _get(self, url=None, **kwargs):
+        if url is None:
+            url = self.url
+
+        resp = self.session.get(url, timeout=self.timeout, **kwargs)
+
+        if not resp.ok:
+            resp.raise_for_status()
+
+        return resp
+
+    def _fetch_probe_chunk(self, url=None, chunk_size=2**17):
+        with self._get(url, stream=True) as resp:
+            content = resp.iter_content(chunk_size=chunk_size)
+            chunk = next(iter(content))
+
+        return chunk
+
+    def _fetch_url_stream_safe(self, url=None, max_size=2**20):
+        # This method is called by subclasses which expect self.stream.url
+        # to be a short text file (playlist or web page), but need to be
+        # robust to the possibility of server misconfiguration actually
+        # returning an audio stream. Trying to fetch the whole thing would
+        # cause the process to hang and eventually lead to out-of-memory
+        # errors. Instead we'll fetch it as a stream and return only the
+        # first max_size decoded bytes.
+        with self._get(url, stream=True) as resp:
+            txt = resp.raw.read(max_size + 1, decode_content=True)
+
+        if len(txt) > max_size:
+            msg = 'Too large a response - is it actually an audio file?'
+            raise ValueError(msg)
+
+        return txt
 
 
 class AudioStream(MediaUrl):
@@ -549,7 +570,10 @@ class AudioStream(MediaUrl):
                 mtype = chunk['media_type']
                 mtype = mtype.value if mtype is not None else None
 
-                buf += AudioSegment.from_file(obj, format=mtype, parameters=ffmpeg_params)
+                buf += AudioSegment.from_file(
+                    obj, format=mtype,
+                    parameters=ffmpeg_params
+                )
 
             while len(buf) >= chunk_size:
                 out, buf = buf[:chunk_size], buf[chunk_size:]
@@ -575,10 +599,13 @@ class AudioStream(MediaUrl):
 
     def close(self):
         '''
-        Close the underlying iterator.
+        Close the underlying network connection.
         '''
 
-        self._iterator.close()
+        try:
+            self.session.close()
+        except Exception:  # pylint: disable=broad-except
+            pass
 
     def _get_iterator(self):
         if self.media_type is None:
