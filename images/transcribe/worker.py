@@ -129,6 +129,17 @@ class TranscribeWorker:  # pylint: disable=too-many-instance-attributes
     # Error handling
     #
 
+    def error_count(self, cur):
+        cur.execute('''
+        select
+            error_count
+        from transcribe.jobs
+        where
+            chunk_id = ?;
+        ''', (self.chunk_id,))
+
+        return cur.fetchone()[0]
+
     def mark_failure(self, cur):
         info = sys.exc_info()
         info = '' if info == (None, None, None) else str(info)
@@ -185,12 +196,14 @@ class TranscribeWorker:  # pylint: disable=too-many-instance-attributes
 
                     logger.info('Successfully transcribed %s', self.url)
                 except Exception:  # pylint: disable=broad-except
-                    logger.exception('Chunk failed')
-                    self.mark_failure(cur)
+                    if self.error_count(cur) < self.chunk_error_threshold:
+                        msg = 'Chunk %s with url %s failed'
+                    else:
+                        msg = 'Chunk %s with url %s failed too many times ' + \
+                              'and will no longer be retried'
+                    logger.exception(msg, self.chunk_id, self.url)
 
-                    # FIXME
-                    if self.chunk_error_behavior == 'exit':
-                        raise
+                    self.mark_failure(cur)
                 else:
                     self.mark_success(cur)
 

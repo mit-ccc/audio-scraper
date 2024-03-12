@@ -3,7 +3,7 @@ SHELL := /bin/bash
 .PHONY: up down deploy clean
 
 up: containers down
-	docker compose up --remove-orphans --scale transcribe=1
+	docker compose up --remove-orphans --scale transcribe=0
 
 containers:
 	set -Eeuo pipefail && \
