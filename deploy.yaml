@@ -74,6 +74,10 @@ spec:
         app.kubernetes.io/component: postgres
     spec:
       restartPolicy: Always
+      volumes:
+        - name: postgres-storage
+          persistentVolumeClaim:
+            claimName: postgres-pvc
       initContainers:
         - name: volume-permissions
           image: busybox
@@ -86,8 +90,8 @@ spec:
           image: audio-scraper-postgres
           imagePullPolicy: IfNotPresent
           volumeMounts:
-            - mountPath: '/var/lib/postgresql/data'
-              name: postgres-storage
+            - name: postgres-storage
+              mountPath: /var/lib/postgresql/data
           envFrom:
             - configMapRef:
                 name: env-configmap
@@ -100,10 +104,6 @@ spec:
             failureThreshold: 5
             periodSeconds: 10
             timeoutSeconds: 5
-      volumes:
-        - name: postgres-storage
-          persistentVolumeClaim:
-            claimName: postgres-pvc
 
 ---
 
