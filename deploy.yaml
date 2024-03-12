@@ -7,16 +7,18 @@ metadata:
     app.kubernetes.io/component: env-configmap
 data:
   STORE_URL: 's3://wbrannon-lsm-data/speechbox/'
-  CHUNK_ERROR_THRESHOLD: '1'
-  CHUNK_SIZE_SECONDS: '30'
-  N_TASKS: '10'
-  LOG_LEVEL: 'INFO'
+  LOG_LEVEL: INFO
   POLL_INTERVAL: '10'
 
-  WHISPER_VERSION: 'large-v3'
-  COMPUTE_TYPE: 'int8'
-  DEVICE: 'cpu'
+  CHUNK_SIZE_SECONDS: '30'
+  INGEST_CHUNK_ERROR_THRESHOLD: '1'
+  N_TASKS: '10'  # FIXME
+
+  WHISPER_VERSION: large-v3
+  COMPUTE_TYPE: int8
+  DEVICE: cpu
   REMOVE_AUDIO: 'false'
+  TRANSCRIBE_CHUNK_ERROR_THRESHOLD: '1'
 
 ---
 
