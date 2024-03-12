@@ -8,9 +8,10 @@ up: containers secrets
 containers: start
 	@set -Eeuo pipefail && \
 	eval $$(minikube docker-env) && \
-	for target in $$(find images/ -depth 1 -type d -exec basename {} \;); do \
+	while IFS= read -r -d '' target \
+	do \
 		docker build -t "audio-scraper-$$target" "images/$$target"; \
-	done
+	done <  <(find images/ -depth 1 -type d -exec basename {} \;)
 
 secrets: start
 	@minikube kubectl delete secret env-secrets || true
