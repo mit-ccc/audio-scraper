@@ -17,7 +17,8 @@ secrets: start
 	@minikube kubectl create secret generic env-secrets --from-env-file=secrets.env
 
 start:
-	@minikube start --driver=docker --memory 4096 --cpus 2 --disk-size=50g
+	@minikube start --driver=docker --addons=nvidia-gpu-device-plugin \
+		--memory 4096 --cpus 2 --disk-size=50g
 	@minikube addons enable metrics-server
 
 stop:

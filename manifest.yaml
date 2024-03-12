@@ -73,6 +73,7 @@ spec:
         app.kubernetes.io/name: audio-scraper
         app.kubernetes.io/component: postgres
     spec:
+      restartPolicy: Always
       containers:
         - name: postgres
           image: audio-scraper-postgres
@@ -92,10 +93,9 @@ spec:
             periodSeconds: 10
             timeoutSeconds: 5
       volumes:
-      - name: postgres-storage
-        persistentVolumeClaim:
-          claimName: postgres-pvc
-      restartPolicy: Always
+        - name: postgres-storage
+          persistentVolumeClaim:
+            claimName: postgres-pvc
 
 ---
 
@@ -118,6 +118,7 @@ spec:
         app.kubernetes.io/name: audio-scraper
         app.kubernetes.io/component: ingest
     spec:
+      restartPolicy: Always
       containers:
         - name: ingest
           image: audio-scraper-ingest
@@ -129,7 +130,6 @@ spec:
                 name: env-configmap
             - secretRef:
                 name: env-secrets
-      restartPolicy: Always
 
 ---
 
@@ -152,6 +152,7 @@ spec:
         app.kubernetes.io/name: audio-scraper
         app.kubernetes.io/component: transcribe
     spec:
+      restartPolicy: Always
       containers:
         - name: transcribe
           image: audio-scraper-transcribe
@@ -163,4 +164,6 @@ spec:
                 name: env-configmap
             - secretRef:
                 name: env-secrets
-      restartPolicy: Always
+          resources:
+            limits:
+              nvidia.com/gpu: 1
