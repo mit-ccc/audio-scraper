@@ -21,7 +21,8 @@ secrets:
 
 start:
 	@minikube start --driver=docker --addons=nvidia-gpu-device-plugin \
-		--memory 4096 --cpus 2 --disk-size=50g
+		--memory 4096 --cpus 2 --disk-size=50g \
+		--mount --mount-string "$$(pwd)/data:/hostdata"
 	@minikube addons enable metrics-server
 
 stop:

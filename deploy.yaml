@@ -6,7 +6,9 @@ metadata:
     app.kubernetes.io/name: audio-scraper
     app.kubernetes.io/component: env-configmap
 data:
-  STORE_URL: 's3://wbrannon-lsm-data/speechbox/'
+  # STORE_URL: 's3://wbrannon-lsm-data/speechbox/'
+  STORE_URL: 'file:///hostdata/'
+
   LOG_LEVEL: INFO
   POLL_INTERVAL: '10'
 
@@ -19,7 +21,6 @@ data:
   DEVICE: cpu
   REMOVE_AUDIO: 'false'
   TRANSCRIBE_CHUNK_ERROR_THRESHOLD: '1'
-
 ---
 
 apiVersion: v1
@@ -80,6 +81,10 @@ spec:
         - name: postgres-storage
           persistentVolumeClaim:
             claimName: postgres-pvc
+        - name: output
+          hostPath:
+            path: /hostdata
+            type: Directory
       initContainers:
         - name: volume-permissions
           image: busybox
@@ -94,6 +99,8 @@ spec:
           volumeMounts:
             - name: postgres-storage
               mountPath: /var/lib/postgresql/data
+            - name: output
+              mountPath: /hostdata
           envFrom:
             - configMapRef:
                 name: env-configmap
@@ -129,10 +136,18 @@ spec:
         app.kubernetes.io/component: ingest
     spec:
       restartPolicy: Always
+      volumes:
+        - name: output
+          hostPath:
+            path: /hostdata
+            type: Directory
       containers:
         - name: ingest
           image: audio-scraper-ingest
           imagePullPolicy: IfNotPresent
+          volumeMounts:
+            - name: output
+              mountPath: /hostdata
           env:
             - name: POSTGRES_HOST
               value: postgres-service
@@ -164,10 +179,18 @@ spec:
         app.kubernetes.io/component: transcribe
     spec:
       restartPolicy: Always
+      volumes:
+        - name: output
+          hostPath:
+            path: /hostdata
+            type: Directory
       containers:
         - name: transcribe
           image: audio-scraper-transcribe
           imagePullPolicy: IfNotPresent
+          volumeMounts:
+            - name: output
+              mountPath: /hostdata
           env:
             - name: POSTGRES_HOST
               value: postgres-service
