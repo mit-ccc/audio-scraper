@@ -141,7 +141,7 @@ class Chunk:
             key = key[1:]
 
         with io.BytesIO() as fobj:
-            with gzip.GzipFile(fileobj=fobj, mode='rb+') as gzfile:
+            with gzip.GzipFile(fileobj=fobj, mode='wb') as gzfile:
                 gzfile.write(results.encode('utf-8'))
             fobj.seek(0, 0)
 
