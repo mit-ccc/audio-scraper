@@ -340,13 +340,13 @@ class Worker:  # pylint: disable=too-many-instance-attributes
         conds = self.get_stop_conditions()
 
         if conds['deleted']:
-            msg = "Job %s cancelled"
+            msg = 'Job %s cancelled'
             vals = (self.source_id,)
             raise ex.JobCancelledException(msg % vals)
 
         if conds['failed']:
-            msg = "Job %s had too many failures"
-            vals = (self.source_id,)
+            msg = 'Job %s (%s) had too many failures'
+            vals = (self.source_id, self.source)
             raise ex.TooManyFailuresException(msg % vals)
 
         return self
