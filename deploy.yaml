@@ -20,7 +20,7 @@ data:
 
   WHISPER_VERSION: large-v3
   COMPUTE_TYPE: int8
-  REMOVE_AUDIO: 'false'
+  REMOVE_AUDIO: 'true'
   TRANSCRIBE_CHUNK_ERROR_THRESHOLD: '1'
 ---
 
