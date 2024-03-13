@@ -1,12 +1,13 @@
 SHELL := /bin/bash
 
-.PHONY: up down containers secrets start stop delete dashboard status clean
+.PHONY: up containers secrets down start stop delete dashboard status clean
 
-up: start containers secrets
+#
+# Running our app
+#
+
+up: containers secrets
 	@minikube kubectl -- apply -f deploy.yaml
-
-down:
-	@minikube kubectl -- delete -f deploy.yaml > /dev/null 2>&1 || true
 
 containers:
 	set -Eeuo pipefail && \
@@ -18,6 +19,13 @@ containers:
 secrets:
 	@minikube kubectl -- delete secret env-secrets > /dev/null 2>&1 || true
 	@minikube kubectl -- create secret generic env-secrets --from-env-file=secrets.env
+
+down:
+	@minikube kubectl -- delete -f deploy.yaml > /dev/null 2>&1 || true
+
+#
+# Cluster management
+#
 
 # adjust these memory and cpu values to suit how many replicas you're running
 start:
@@ -38,6 +46,10 @@ dashboard:
 
 status:
 	@minikube status
+
+#
+# Misc
+#
 
 clean:
 	find . -name '*.pyc'       -not -path '*/\.git/*' -exec rm -f {} \+
