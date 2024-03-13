@@ -21,8 +21,8 @@ secrets:
 	@minikube kubectl -- create secret generic env-secrets --from-env-file=secrets.env
 
 down:
-	@minikube kubectl -- delete -f deploy.yaml > /dev/null 2>&1 || true
 	@minikube kubectl -- delete pv --all > /dev/null 2>&1
+	@minikube kubectl -- delete -f deploy.yaml > /dev/null 2>&1 || true
 
 #
 # Cluster management
