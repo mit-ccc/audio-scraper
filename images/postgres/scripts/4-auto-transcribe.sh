@@ -126,10 +126,10 @@ class ChunkLoader:
         queue = set()
         for prefix in files.keys():
             for file in files[prefix]:
-                if file.endswith('.json'):
+                if file.endswith('.json.gz'):
                     continue
 
-                if file + '.json' not in files:
+                if file + '.json.gz' not in files:
                     queue.add((prefix, file))
 
         return queue
