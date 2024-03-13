@@ -385,7 +385,7 @@ class Worker:  # pylint: disable=too-many-instance-attributes
     #
 
     def ensure_stream(self):
-        if self.iterator is not None:
+        if self.stream is not None:
             return self
 
         try:
@@ -394,7 +394,20 @@ class Worker:  # pylint: disable=too-many-instance-attributes
                 save_format=self.save_format,
                 retry_on_close=self.retry_on_close,
             )
+        except Exception:  # pylint: disable=broad-except
+            logger.exception('Ingest failure')
+            self.mark_failure()
 
+        return self
+
+    def ensure_iterator(self):
+        if self.stream is None:
+            self.ensure_stream()
+
+        if self.iterator is not None:
+            return self
+
+        try:
             self.iterator = self.stream.iter_time_chunks(self.chunk_size_seconds)
         except Exception:  # pylint: disable=broad-except
             logger.exception('Ingest failure')
@@ -414,6 +427,11 @@ class Worker:  # pylint: disable=too-many-instance-attributes
         except Exception:  # pylint: disable=broad-except
             logger.exception('Ingest failure')
             self.mark_failure()
+
+            # the exception exhausts it and it'll raise StopIteration on the
+            # next call to next()
+            self.iterator = None
+            self.ensure_iterator()
         else:
             self.mark_success(out_url)
 
@@ -430,7 +448,9 @@ class Worker:  # pylint: disable=too-many-instance-attributes
 
         while True:
             self.stop_if_error()
+
             self.ensure_stream()
+            self.ensure_iterator()
 
             try:
                 self.process_next_chunk()
