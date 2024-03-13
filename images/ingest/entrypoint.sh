@@ -3,7 +3,7 @@
 
 set -Eeuo pipefail
 
-wait-for-it "${POSTGRES_HOST:-postgres}:${PGPORT:-5432}" -- echo "Postgres up"
+wait-for-it -t 0 "${POSTGRES_HOST:-postgres}:${PGPORT:-5432}"
 
 cat > ~/.odbc.ini << EOF
 [Database]
