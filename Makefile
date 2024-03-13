@@ -22,6 +22,7 @@ secrets:
 
 down:
 	@minikube kubectl -- delete -f deploy.yaml > /dev/null 2>&1 || true
+	@minikube kubectl -- delete pv --all > /dev/null 2>&1
 
 #
 # Cluster management
