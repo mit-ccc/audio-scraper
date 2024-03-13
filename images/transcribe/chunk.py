@@ -140,16 +140,18 @@ class Chunk:
         if key.startswith('/'):
             key = key[1:]
 
-        outkey = key + '.json.gz'
-        with io.BytesIO(results.encode('utf-8')) as fobj:
-            with gzip.GzipFile(fileobj=fobj) as gzfile:
-                self._client.upload_fileobj(
-                    gzfile, bucket, outkey,
-                    ExtraArgs={
-                        'ContentType': 'application/json',
-                        'ContentEncoding': 'gzip'
-                    }
-                )
+        with io.BytesIO() as fobj:
+            with gzip.GzipFile(fileobj=fobj, mode='rb+') as gzfile:
+                gzfile.write(results.encode('utf-8'))
+            fobj.seek(0, 0)
+
+            self._client.upload_fileobj(
+                fobj, bucket, key + '.json.gz',
+                ExtraArgs={
+                    'ContentType': 'application/json',
+                    'ContentEncoding': 'gzip'
+                }
+            )
 
     def _write_results_local(self, results):
         outkey = self._url_parsed.path + '.json.gz'
