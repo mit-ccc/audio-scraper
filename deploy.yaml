@@ -1,3 +1,5 @@
+# FIXME handle DB failing
+
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -110,8 +112,15 @@ spec:
               command:
                 - pg_isready
             failureThreshold: 5
-            periodSeconds: 10
-            timeoutSeconds: 5
+            periodSeconds: 30
+            timeoutSeconds: 30
+          readinessProbe:
+            exec:
+              command:
+                - pg_isready
+            failureThreshold: 5
+            periodSeconds: 30
+            timeoutSeconds: 30
           resources:
             requests:
               cpu: 50m
