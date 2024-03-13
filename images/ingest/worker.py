@@ -11,6 +11,7 @@ import sys
 import time
 import random
 import logging
+import traceback
 
 from functools import cached_property
 from urllib.parse import urlparse
@@ -352,7 +353,10 @@ class Worker:  # pylint: disable=too-many-instance-attributes
 
     def mark_failure(self):
         info = sys.exc_info()
-        info = '' if info == (None, None, None) else str(info)
+        if info == (None, None, None):
+            info = ''
+        else:
+            info = ''.join(traceback.format_exception(*info))
 
         with self.db.cursor() as cur:
             # concurency-safe because we have the lock on this source_id
