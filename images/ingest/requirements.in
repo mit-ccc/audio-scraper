@@ -5,6 +5,7 @@ bs4
 m3u8
 lxml
 pydub
+backoff
 simpleaudio
 ffmpeg-python
 fake-useragent

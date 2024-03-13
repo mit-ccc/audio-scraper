@@ -22,9 +22,11 @@ audioread==3.0.1
     # via librosa
 av==11.0.0
     # via faster-whisper
-boto3==1.34.58
+backoff==2.2.1
     # via -r requirements.in
-botocore==1.34.58
+boto3==1.34.61
+    # via -r requirements.in
+botocore==1.34.61
     # via
     #   boto3
     #   s3transfer
@@ -46,7 +48,7 @@ colorlog==6.8.2
     # via optuna
 contourpy==1.2.0
     # via matplotlib
-ctranslate2==4.0.0
+ctranslate2==4.1.0
     # via faster-whisper
 cycler==0.12.1
     # via matplotlib
@@ -184,7 +186,7 @@ onnxruntime==1.17.1
     # via faster-whisper
 optuna==3.5.0
     # via pyannote-pipeline
-packaging==23.2
+packaging==24.0
     # via
     #   huggingface-hub
     #   lightning

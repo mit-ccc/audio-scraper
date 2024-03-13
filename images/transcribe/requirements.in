@@ -1,6 +1,7 @@
 pyodbc
 boto3
 numpy
+backoff
 ffmpeg-python
 torch==2.2.1
 whisperx @ git+https://github.com/m-bain/whisperX.git@78dcfaa
