@@ -11,11 +11,12 @@ declare -a current_repos
 lines="$(aws ecr describe-repositories | jq -r '.repositories[] | .repositoryName')"
 mapfile -t current_repos <<< "$lines"
 
-while IFS= read -r -d '' target
-do
-    echo "Building and pushing Docker image $target"
+for img in images/*; do
+    target="$(basename "$img")"
     rname="audio-scraper/$target"
     repo_url="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$rname:latest"
+
+    echo "Building and pushing Docker image $target"
 
     repo_exists=0
     for c in "${current_repos[@]}"; do
@@ -33,4 +34,4 @@ do
     docker build -t "$rname" "images/$target"
     docker tag "$rname:latest" "$repo_url"
     docker push "$repo_url"
-done <  <(find images/ -depth 1 -type d -exec basename {} \;)
+done

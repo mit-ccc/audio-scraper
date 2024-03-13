@@ -6,18 +6,20 @@ metadata:
     app.kubernetes.io/name: audio-scraper
     app.kubernetes.io/component: env-configmap
 data:
-  STORE_URL: 's3://wbrannon-lsm-data/speechbox/'
-  CHUNK_ERROR_THRESHOLD: '1'
-  CHUNK_SIZE_SECONDS: '30'
-  N_TASKS: '10'
-  LOG_LEVEL: 'INFO'
+  # STORE_URL: 's3://wbrannon-lsm-data/speechbox/'
+  STORE_URL: 'file:///hostdata/'
+
+  LOG_LEVEL: INFO
   POLL_INTERVAL: '10'
 
-  WHISPER_VERSION: 'large-v3'
-  COMPUTE_TYPE: 'int8'
-  DEVICE: 'cpu'
-  REMOVE_AUDIO: 'false'
+  CHUNK_SIZE_SECONDS: '30'
+  INGEST_CHUNK_ERROR_THRESHOLD: '1'
+  INGEST_N_TASKS_PER_CONTAINER: '10'
 
+  WHISPER_VERSION: large-v3
+  COMPUTE_TYPE: int8
+  REMOVE_AUDIO: 'false'
+  TRANSCRIBE_CHUNK_ERROR_THRESHOLD: '1'
 ---
 
 apiVersion: v1
@@ -74,12 +76,30 @@ spec:
         app.kubernetes.io/component: postgres
     spec:
       restartPolicy: Always
+      volumes:
+        - name: postgres-storage
+          persistentVolumeClaim:
+            claimName: postgres-pvc
+        - name: output
+          hostPath:
+            path: /hostdata
+            type: Directory
+      initContainers:
+        - name: volume-permissions
+          image: busybox
+          command: ['sh', '-c', 'chown -R 999:999 /var/lib/postgresql/data']
+          volumeMounts:
+            - name: postgres-storage
+              mountPath: /var/lib/postgresql/data
       containers:
         - name: postgres
           image: audio-scraper-postgres
+          imagePullPolicy: IfNotPresent
           volumeMounts:
-            - mountPath: '/var/lib/postgresql/data'
-              name: postgres-storage
+            - name: postgres-storage
+              mountPath: /var/lib/postgresql/data
+            - name: output
+              mountPath: /hostdata
           envFrom:
             - configMapRef:
                 name: env-configmap
@@ -92,10 +112,13 @@ spec:
             failureThreshold: 5
             periodSeconds: 10
             timeoutSeconds: 5
-      volumes:
-        - name: postgres-storage
-          persistentVolumeClaim:
-            claimName: postgres-pvc
+          resources:
+            requests:
+              cpu: 50m
+              memory: 50Mi
+            limits:
+              cpu: 1000m
+              memory: 256Mi
 
 ---
 
@@ -119,9 +142,18 @@ spec:
         app.kubernetes.io/component: ingest
     spec:
       restartPolicy: Always
+      volumes:
+        - name: output
+          hostPath:
+            path: /hostdata
+            type: Directory
       containers:
         - name: ingest
           image: audio-scraper-ingest
+          imagePullPolicy: IfNotPresent
+          volumeMounts:
+            - name: output
+              mountPath: /hostdata
           env:
             - name: POSTGRES_HOST
               value: postgres-service
@@ -130,6 +162,13 @@ spec:
                 name: env-configmap
             - secretRef:
                 name: env-secrets
+          resources:
+            requests:
+              cpu: 384m
+              memory: 192Mi
+            limits:
+              cpu: 1000m
+              memory: 256Mi
 
 ---
 
@@ -153,9 +192,18 @@ spec:
         app.kubernetes.io/component: transcribe
     spec:
       restartPolicy: Always
+      volumes:
+        - name: output
+          hostPath:
+            path: /hostdata
+            type: Directory
       containers:
         - name: transcribe
           image: audio-scraper-transcribe
+          imagePullPolicy: IfNotPresent
+          volumeMounts:
+            - name: output
+              mountPath: /hostdata
           env:
             - name: POSTGRES_HOST
               value: postgres-service
@@ -165,5 +213,10 @@ spec:
             - secretRef:
                 name: env-secrets
           resources:
+            requests:
+              cpu: 1100m
+              memory: 3584Mi
             limits:
+              cpu: 2000m
+              memory: 5120Mi
               nvidia.com/gpu: 1
