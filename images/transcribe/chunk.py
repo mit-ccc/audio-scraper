@@ -2,6 +2,7 @@ from typing import Optional
 
 import io
 import os
+import gzip
 import json
 import hashlib
 import logging
@@ -139,11 +140,20 @@ class Chunk:
         if key.startswith('/'):
             key = key[1:]
 
+        outkey = key + '.json.gz'
         with io.BytesIO(results.encode('utf-8')) as fobj:
-            self._client.upload_fileobj(fobj, bucket, key + '.json')
+            with gzip.GzipFile(fileobj=fobj) as gzfile:
+                self._client.upload_fileobj(
+                    gzfile, bucket, outkey,
+                    ExtraArgs={
+                        'ContentType': 'application/json',
+                        'ContentEncoding': 'gzip'
+                    }
+                )
 
     def _write_results_local(self, results):
-        with open(self._url_parsed.path + '.json', 'wt', encoding='utf-8') as fobj:
+        outkey = self._url_parsed.path + '.json.gz'
+        with gzip.open(outkey, 'wt', encoding='utf-8') as fobj:
             fobj.write(results)
 
     @cached_property
