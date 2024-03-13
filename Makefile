@@ -19,10 +19,11 @@ secrets:
 	@minikube kubectl -- delete secret env-secrets > /dev/null 2>&1 || true
 	@minikube kubectl -- create secret generic env-secrets --from-env-file=secrets.env
 
+# adjust these memory and cpu values to suit how many replicas you're running
 start:
-	@minikube start --driver=docker --container-runtime=docker --gpus all \
-		--memory 4096 --cpus 2 --disk-size=50g \
-		--mount --mount-string "$$(pwd)/data:/hostdata"
+	@minikube start --driver=docker --container-runtime=docker --gpus=all \
+		--memory=4096 --cpus=2 --disk-size=50g \
+		--mount --mount-string="$$(pwd)/data:/hostdata"
 	@minikube addons enable nvidia-gpu-device-plugin
 	@minikube addons enable metrics-server
 
