@@ -384,56 +384,26 @@ class Worker:  # pylint: disable=too-many-instance-attributes
     # Main loop
     #
 
-    def ensure_stream(self):
-        if self.stream is not None:
-            return self
+    def stream_setup(self):
+        while True:
+            self.stop_if_error()
 
-        try:
-            self.stream = AudioStream(
-                url=self.stream_url,
-                save_format=self.save_format,
-                retry_on_close=self.retry_on_close,
-            )
-        except Exception:  # pylint: disable=broad-except
-            logger.exception('Ingest failure')
-            self.mark_failure()
+            try:
+                self.stream = AudioStream(
+                    url=self.stream_url,
+                    save_format=self.save_format,
+                    retry_on_close=self.retry_on_close,
+                )
 
-        return self
+                self.iterator = self.stream.iter_time_chunks(self.chunk_size_seconds)
+            except Exception:  # pylint: disable=broad-except
+                logger.exception('Ingest failure')
+                self.mark_failure()
 
-    def ensure_iterator(self):
-        if self.stream is None:
-            self.ensure_stream()
+                continue
 
-        if self.iterator is not None:
-            return self
-
-        try:
-            self.iterator = self.stream.iter_time_chunks(self.chunk_size_seconds)
-        except Exception:  # pylint: disable=broad-except
-            logger.exception('Ingest failure')
-            self.mark_failure()
-
-        return self
-
-    def process_next_chunk(self):
-        try:
-            start_time = time.time()
-            chunk = next(self.iterator)
-            end_time = time.time()
-
-            out_url = self._write_chunk(chunk, start_time, end_time)
-        except StopIteration:
-            raise
-        except Exception:  # pylint: disable=broad-except
-            logger.exception('Ingest failure')
-            self.mark_failure()
-
-            # the exception exhausts it and it'll raise StopIteration on the
-            # next call to next()
-            self.iterator = None
-            self.ensure_iterator()
-        else:
-            self.mark_success(out_url)
+            if self.iterator is not None:
+                break
 
         return self
 
@@ -443,23 +413,34 @@ class Worker:  # pylint: disable=too-many-instance-attributes
         '''
 
         self.acquire_task()
-
         logger.info('Began ingest: %s from %s', self.source, self.stream_url)
+
+        self.stream_setup()
 
         while True:
             self.stop_if_error()
 
-            self.ensure_stream()
-            self.ensure_iterator()
-
             try:
-                self.process_next_chunk()
+                start_time = time.time()
+                chunk = next(self.iterator)
+                end_time = time.time()
+
+                out_url = self._write_chunk(chunk, start_time, end_time)
             except StopIteration:
                 logger.info('Source %s (%s) ran out of audio',
                             self.source_id, self.source)
-
                 self.delete_task()  # successful completion
 
                 break
+            except Exception:  # pylint: disable=broad-except
+                logger.exception('Ingest failure')
+                self.mark_failure()
+
+                # the exception exhausts our iterator (which is actually a
+                # generator), so if we don't refresh the underlying stream
+                # it'll raise StopIteration on the subsequent call to next()
+                self.stream_setup()
+            else:
+                self.mark_success(out_url)
 
         return self
