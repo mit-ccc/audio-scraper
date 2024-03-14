@@ -262,23 +262,11 @@ class WebscrapeIterator(MediaIterator):
         url = self._webscrape_extract_media_url(txt)
 
         # we'll just proxy for an iterator on the real stream
-        args = dict(self.stream.args)
-        args['url'] = url
-
-        stream = AudioStream(**args, unknown_formats='direct')
-
-        if stream.media_type == PlaylistMediaType.ASX:
-            self.content = AsxIterator(stream=stream)
-        elif stream.media_type == PlaylistMediaType.PLS:
-            self.content = PlsIterator(stream=stream)
-        elif stream.media_type == PlaylistMediaType.M3U:
-            self.content = M3uIterator(stream=stream)
-        elif stream.media_type == PlaylistMediaType.M3U8:
-            self.content = M3uIterator(stream=stream)
-        elif stream.media_type in WebscrapeMediaType:
+        args = dict(url=url, unknown_formats='direct', **self.stream.args)
+        stream = AudioStream(**args)
+        if stream.media_type in WebscrapeMediaType:
             raise ex.IngestException('WebscrapeIterators may not be nested')
-        else:  # fallback to streaming
-            self.content = DirectStreamIterator(stream=stream)
+        self.content = stream._iterator
 
     def _url_filter_extension(self, urls, direct=True, playlist=True):
         assert len(urls) > 0
