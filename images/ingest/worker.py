@@ -411,8 +411,11 @@ class Worker:  # pylint: disable=too-many-instance-attributes
 
         return self
 
-    # FIXME this implementation will - on error - start ingesting a
-    # non-permanent stream again from the beginning by reopening the connection
+    # NOTE: If we're ingesting a fixed-size stream (i.e., an audio file) and
+    # there's an error partway through, this implementation will try to restart
+    # the download where it left off with the HTTP "Range" header. Not all
+    # servers support this and so it's possible that we may end up with
+    # duplicated data from a restarted ingest of such a file.
     def run(self):
         '''
         Main worker entrypoint. Acquire a task, then ingest its stream.
