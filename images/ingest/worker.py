@@ -407,6 +407,8 @@ class Worker:  # pylint: disable=too-many-instance-attributes
 
         return self
 
+    # FIXME this implementation will - on error - start ingesting a
+    # non-permanent stream again from the beginning by reopening the connection
     def run(self):
         '''
         Main worker entrypoint. Acquire a task, then ingest its stream.
@@ -439,6 +441,7 @@ class Worker:  # pylint: disable=too-many-instance-attributes
                 # the exception exhausts our iterator (which is actually a
                 # generator), so if we don't refresh the underlying stream
                 # it'll raise StopIteration on the subsequent call to next()
+                self.stream.close()
                 self.stream_setup()
             else:
                 self.mark_success(out_url)
