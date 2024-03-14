@@ -9,6 +9,8 @@ import os
 import io
 import re
 import json
+import time
+import random
 import logging
 import mimetypes as mt
 import itertools as it
@@ -22,6 +24,7 @@ from abc import ABC, abstractmethod
 import bs4
 import m3u8
 import ffmpeg
+import backoff
 import requests as rq
 
 from pydub import AudioSegment
@@ -93,10 +96,7 @@ class MediaIterator(ABC):
 
         super().__init__(**kwargs)
 
-        # Must be defined in subclasses by the _refresh method
-        self.content = NotImplemented
-
-        self._refresh()
+        self.content = self._refresh()
 
         self.retry_error_cnt = 0
 
@@ -116,14 +116,14 @@ class MediaIterator(ABC):
                 self.retry_error_cnt += 1
 
                 if self.retry_error_cnt <= self.stream.retry_error_max:
-                    self._refresh()
+                    self.content = self._refresh()
                 else:
                     raise
             except StopIteration:
                 if not self.stream.retry_on_close:
                     raise
 
-                self._refresh()
+                self.content = self._refresh()
                 continue
 
 
@@ -133,16 +133,69 @@ class DirectStreamIterator(MediaIterator):
     rather than a playlist or website that requires scraping.
     '''
 
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        self._max_waits = kwargs.get('max_waits', 8)
+        self._current_byte_pos = 0
+        self._supports_range = None  # determined on first refresh
+
+    def _get_conn(self):
+        if self._supports_range:
+            headers = {'Range': f'bytes={self._current_byte_pos}-'}
+        else:
+            headers = {}
+        resp = self.stream._get(stream=True, headers=headers)
+
+        if self._supports_range is None:  # i.e., first time running this
+            arhdr = resp.headers.get('Accept-Ranges', 'none')
+            self._supports_range = (arhdr == 'bytes')
+
+        return resp
+
+    def _content_chunks(self):
+        with self._get_conn() as conn:
+            chunk_size = self.stream.raw_chunk_size_bytes
+            content = conn.iter_content(chunk_size=chunk_size)
+
+            for chunk in content:
+                yield chunk
+                self._current_byte_pos += len(chunk)
+
+    def _content_chunks_robust(self):
+        chunks, itr = None, None
+
+        wait, max_wait = 1, 2 ** (self._max_waits - 1)
+
+        while True:
+            if chunks is None:
+                chunks = self._content_chunks()
+                itr = iter(chunks)
+
+            try:
+                chunk = next(itr)
+                yield {'media_type': self.stream.media_type, 'data': chunk}
+                self._current_byte_pos += len(chunk)
+            except StopIteration:
+                break
+            except rq.exceptions.RequestException:
+                logger.warning('Encountered HTTP error in iter_content', exc_info=True)
+
+                if wait >= max_wait:
+                    raise
+
+                chunks, itr = None, None
+
+                jitter_frac = 0.1 * (random.random() - 0.5)
+                sleep_time = wait * (1 + jitter_frac)
+
+                logger.debug(f'Sleeping {sleep_time} seconds')
+                time.sleep(sleep_time)
+
+                wait *= 2
+
     def _refresh(self):
-        self.conn = self.stream._get(stream=True)
-
-        chunk_size = self.stream.raw_chunk_size_bytes
-        content = self.conn.iter_content(chunk_size=chunk_size)
-
-        self.content = (
-            {'media_type': self.stream.media_type, 'data': chunk}
-            for chunk in content
-        )
+        return self._content_chunks_robust()  # returns generator
 
 
 class PlaylistIterator(MediaIterator):
@@ -173,7 +226,7 @@ class PlaylistIterator(MediaIterator):
         # after it closes, reopening and repeatedly reading it.
         args['retry_on_close'] = False
 
-        self.content = it.chain(*[
+        return it.chain(*[
             AudioStream(**dict(args, url=x))
             for x in comps
         ])
@@ -262,11 +315,15 @@ class WebscrapeIterator(MediaIterator):
         url = self._webscrape_extract_media_url(txt)
 
         # we'll just proxy for an iterator on the real stream
-        args = dict(url=url, unknown_formats='direct', **self.stream.args)
+        args = dict(self.stream.args)
+        args['url'] = url  # override the one already present
+        args['unknown_formats'] = 'direct'
+
         stream = AudioStream(**args)
         if stream.media_type in WebscrapeMediaType:
             raise ex.IngestException('WebscrapeIterators may not be nested')
-        self.content = stream._iterator
+
+        return stream._iterator
 
     def _url_filter_extension(self, urls, direct=True, playlist=True):
         assert len(urls) > 0
