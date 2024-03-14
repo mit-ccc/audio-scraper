@@ -386,6 +386,9 @@ class Worker:  # pylint: disable=too-many-instance-attributes
     #
 
     def stream_setup(self):
+        if self.stream is not None:
+            self.stream.close()
+
         while True:
             self.stop_if_error()
 
@@ -442,7 +445,6 @@ class Worker:  # pylint: disable=too-many-instance-attributes
                 # the exception exhausts our iterator (which is actually a
                 # generator), so if we don't refresh the underlying stream
                 # it'll raise StopIteration on the subsequent call to next()
-                self.stream.close()
                 self.stream_setup()
             else:
                 self.mark_success(out_url)

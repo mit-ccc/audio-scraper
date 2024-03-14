@@ -120,12 +120,11 @@ class MediaIterator(ABC):
                 else:
                     raise
             except StopIteration:
-                # pylint: disable-next=no-else-continue
-                if self.stream.retry_on_close:
-                    self._refresh()
-                    continue
-                else:
+                if not self.stream.retry_on_close:
                     raise
+
+                self._refresh()
+                continue
 
 
 class DirectStreamIterator(MediaIterator):
