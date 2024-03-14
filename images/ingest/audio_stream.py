@@ -461,6 +461,8 @@ class MediaUrl:
 
         return None
 
+    @backoff.on_exception(backoff.expo, rq.exceptions.RequestException,
+                          max_tries=5, max_time=600)
     def _get(self, url=None, **kwargs):
         if url is None:
             url = self.url

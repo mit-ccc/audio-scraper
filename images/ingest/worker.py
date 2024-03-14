@@ -18,6 +18,7 @@ from urllib.parse import urlparse
 
 import boto3
 import pyodbc
+import backoff
 
 import exceptions as ex
 from audio_stream import AudioStream
@@ -406,23 +407,6 @@ class Worker:  # pylint: disable=too-many-instance-attributes
                 break
 
         return self
-
-# FIXME handle this kind of http error smarter
-# Traceback (most recent call last):
-#   File "/usr/src/app/worker.py", line 392, in stream_setup
-#     self.stream = AudioStream(
-#   File "/usr/src/app/audio_stream.py", line 531, in __init__
-#     self._iterator = cls(stream=self)
-#   File "/usr/src/app/audio_stream.py", line 99, in __init__
-#     self._refresh()
-#   File "/usr/src/app/audio_stream.py", line 138, in _refresh
-#     self.conn = self.stream._get(stream=True)
-#   File "/usr/src/app/audio_stream.py", line 471, in _get
-#     resp.raise_for_status()
-#   File "/usr/local/lib/python3.10/site-packages/requests/models.py", line 1021, in raise_for_status
-#     raise HTTPError(http_error_msg, response=self)
-# requests.exceptions.HTTPError: 404 Client Error: File Not Found for url: http://grn-stream-01.miriamtech.net:8000/secal.mp3
-
 
     # FIXME this implementation will - on error - start ingesting a
     # non-permanent stream again from the beginning by reopening the connection
