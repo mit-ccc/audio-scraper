@@ -365,9 +365,8 @@ class WebscrapeIterator(MediaIterator):
 
             return ret
         except AssertionError as exc:
-            msg = 'No usable streams in {0}'
-            vals = (self.stream.url,)
-            raise ex.IngestException(msg % vals) from exc
+            msg = 'No usable streams in {0}'.format(self.stream.url)
+            raise ex.IngestException(msg) from exc
 
 
 class IHeartIterator(WebscrapeIterator):
