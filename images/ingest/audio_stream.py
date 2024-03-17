@@ -460,7 +460,10 @@ class MediaUrl:
         return au.probe_format(chunk)
 
     def _autodetect_ext_mime_type(self):
-        with self._head() as resp:
+        # don't use HEAD here because many poorly configured HTTP servers
+        # return some kind of 400/500, whereas opening the stream with a usual
+        # GET request will work
+        with self._get(stream=True) as resp:
             mimetype = resp.headers.get('Content-Type')
 
         if mimetype is None:
