@@ -431,20 +431,20 @@ class MediaUrl:
             self._ext = ''
 
     def _detect_ext(self):
-        status = {
-            'ffprobe': self._autodetect_ext_ffprobe(),
-            'parse': self._autodetect_ext_parse(),
-            'mime': self._autodetect_ext_mime_type(),
-        }
+        ff = self._autodetect_ext_ffprobe()
+        pa = self._autodetect_ext_parse()
+        mm = self._autodetect_ext_mime_type()
 
-        if status['ffprobe'] is not None:
-            return status['ffprobe']
+        # there are a lot of spurious detections of playlist files as 'lrc'
+        # files, which are a format for time-aligned lyrics
+        if ff is not None and ff != 'lrc':
+            return ff
 
-        if status['parse'] is not None:
-            return status['parse']
+        if pa is not None:
+            return pa
 
-        if status['mime'] is not None:
-            return status['mime']
+        if mm is not None:
+            return mm
 
         return ''
 
@@ -515,7 +515,9 @@ class MediaUrl:
 
         method = getattr(self.session, method.lower())
         resp = method(url, timeout=self.timeout, **kwargs)
-        return resp.raise_for_status()
+        resp.raise_for_status()
+
+        return resp
 
     def _get(self, url=None, **kwargs):
         return self._query(url=url, method='GET', **kwargs)
