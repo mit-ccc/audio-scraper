@@ -76,8 +76,6 @@ class Worker:  # pylint: disable=too-many-instance-attributes
         self.stream = None
         self.iterator = None
 
-        self.db = pyodbc.connect(dsn=self.dsn, autocommit=False)
-
         if self.storage_mode == 's3':
             self._client = boto3.client('s3')
         else:
@@ -120,11 +118,6 @@ class Worker:  # pylint: disable=too-many-instance-attributes
         except Exception:  # pylint: disable=broad-except
             pass
 
-        try:
-            self.db.close()
-        except Exception:  # pylint: disable=broad-except
-            pass
-
     def __enter__(self):
         return self
 
@@ -134,6 +127,9 @@ class Worker:  # pylint: disable=too-many-instance-attributes
     #
     # Handle a successful chunk
     #
+
+    def _get_conn(self):
+        return pyodbc.connect(dsn=self.dsn, autocommit=False)
 
     def _write_chunk(self, chunk, start_time, end_time):
         assert self.source is not None
@@ -173,7 +169,9 @@ class Worker:  # pylint: disable=too-many-instance-attributes
     #
 
     def lock_task(self):
-        with self.db.cursor() as cur:
+        with self._get_conn() as conn:
+            cur = conn.cursor()
+
             try:
                 cur.execute('lock table ingest.jobs in exclusive mode;')
 
@@ -213,7 +211,9 @@ class Worker:  # pylint: disable=too-many-instance-attributes
         when the worker exits to avoid orphaning the source.
         '''
 
-        with self.db.cursor() as cur:
+        with self._get_conn() as conn:
+            cur = conn.cursor()
+
             try:
                 cur.execute('lock table ingest.jobs in exclusive mode;')
 
@@ -236,7 +236,9 @@ class Worker:  # pylint: disable=too-many-instance-attributes
         delete it.
         '''
 
-        with self.db.cursor() as cur:
+        with self._get_conn() as conn:
+            cur = conn.cursor()
+
             try:
                 cur.execute('lock table ingest.jobs in exclusive mode;')
 
@@ -273,7 +275,9 @@ class Worker:  # pylint: disable=too-many-instance-attributes
             time.sleep(self.poll_interval)
         self.source_id = res
 
-        with self.db.cursor() as cur:
+        with self._get_conn() as conn:
+            cur = conn.cursor()
+
             cur.execute('''
             select
                 name as source,
@@ -302,7 +306,9 @@ class Worker:  # pylint: disable=too-many-instance-attributes
         the source has failed too many times.
         '''
 
-        with self.db.cursor() as cur:
+        with self._get_conn() as conn:
+            cur = conn.cursor()
+
             params = (
                 self.source_id,
                 self.source_id,
@@ -359,7 +365,9 @@ class Worker:  # pylint: disable=too-many-instance-attributes
         else:
             info = ''.join(traceback.format_exception(*info))
 
-        with self.db.cursor() as cur:
+        with self._get_conn() as conn:
+            cur = conn.cursor()
+
             # concurency-safe because we have the lock on this source_id
             cur.execute('''
             update ingest.jobs
@@ -373,7 +381,9 @@ class Worker:  # pylint: disable=too-many-instance-attributes
     def mark_success(self, url):
         logger.debug('Chunk queued')
 
-        with self.db.cursor() as cur:
+        with self._get_conn() as conn:
+            cur = conn.cursor()
+
             cur.execute('''
             insert into transcribe.jobs
                 (source_id, url)
