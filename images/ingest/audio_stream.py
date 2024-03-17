@@ -426,15 +426,15 @@ class MediaUrl:
             self._ext = self._detect_ext()
         except Exception:  # pylint: disable=broad-except
             msg = 'Encountered exception while guessing stream type'
-            logger.warning(msg)
+            logger.warning(msg, exc_info=True)
 
             self._ext = ''
 
     def _detect_ext(self):
         status = {
             'ffprobe': self._autodetect_ext_ffprobe(),
-            'mime': self._autodetect_ext_mime_type(),
             'parse': self._autodetect_ext_parse(),
+            'mime': self._autodetect_ext_mime_type(),
         }
 
         if status['ffprobe'] is not None:
