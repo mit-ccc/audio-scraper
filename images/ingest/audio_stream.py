@@ -388,6 +388,10 @@ class IHeartIterator(WebscrapeIterator):
             return streams['secure_shoutcast_stream']
         elif 'shoutcast_stream' in streams.keys():
             return streams['shoutcast_stream']
+        elif 'secure_pls_stream' in streams.keys():
+            return streams['secure_pls_stream']
+        elif 'pls_stream' in streams.keys():
+            return streams['pls_stream']
         else:
             # playlists don't seem to work right and just loop over the same
             # short piece of audio. possibly they have to be refreshed by
