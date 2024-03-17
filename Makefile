@@ -33,7 +33,7 @@ down:
 # adjust these memory and cpu values to suit how many replicas you're running
 start:
 	@minikube start --driver=docker --container-runtime=docker \
-		--gpus=all --memory=35328 --cpus=18 --disk-size=50g \
+		--gpus=all --memory=21504 --cpus=12 --disk-size=50g \
 		--mount --mount-string="$$(pwd)/data:/hostdata"
 	@minikube addons enable nvidia-gpu-device-plugin
 	@minikube addons enable metrics-server

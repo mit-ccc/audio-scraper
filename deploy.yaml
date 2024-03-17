@@ -138,7 +138,7 @@ metadata:
     app.kubernetes.io/name: audio-scraper
     app.kubernetes.io/component: ingest
 spec:
-  replicas: 9
+  replicas: 3
   selector:
     matchLabels:
       app.kubernetes.io/name: audio-scraper
@@ -188,7 +188,7 @@ metadata:
     app.kubernetes.io/name: audio-scraper
     app.kubernetes.io/component: transcribe
 spec:
-  replicas: 8
+  replicas: 5
   selector:
     matchLabels:
       app.kubernetes.io/name: audio-scraper
