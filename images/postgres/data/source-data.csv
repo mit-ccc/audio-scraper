@@ -27,5 +27,3 @@ source_id	name	stream_url	auto_ingest	lang	retry_on_close
 35	WVBY-FM	http://live.str3am.com:7820/wvpublic.mp3.m3u	True	en	True
 13	WDDE-FM	http://provisioning.streamtheworld.com/pls/wddefm.pls	True	en	True
 71	WSDL-FM	http://provisioning.streamtheworld.com/pls/wsdlfm.pls	True	en	True
-46	WOUC-FM	http://provisioning.streamtheworld.com/pls/woubfm.pls	True	en	True
-9	WETS-FM	https://wets-fm.streamguys1.com/live-1.m3u	True	en	True
