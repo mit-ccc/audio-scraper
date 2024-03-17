@@ -461,7 +461,7 @@ class MediaUrl:
         return au.probe_format(chunk)
 
     def _autodetect_ext_mime_type(self):
-        with self._get(stream=True) as resp:
+        with self._head() as resp:
             mimetype = resp.headers.get('Content-Type')
 
         if mimetype is None:
@@ -510,16 +510,19 @@ class MediaUrl:
 
     @backoff.on_exception(backoff.expo, rq.exceptions.RequestException,
                           max_tries=5, max_time=600)
-    def _get(self, url=None, **kwargs):
+    def _query(self, method='GET', url=None, **kwargs):
         if url is None:
             url = self.url
 
-        resp = self.session.get(url, timeout=self.timeout, **kwargs)
+        method = getattr(self.session, method.lower())
+        resp = method(url, timeout=self.timeout, **kwargs)
+        return resp.raise_for_status()
 
-        if not resp.ok:
-            resp.raise_for_status()
+    def _get(self, **kwargs):
+        return self._query(method='GET', **kwargs)
 
-        return resp
+    def _head(self, **kwargs):
+        return self._query(method='HEAD', **kwargs)
 
     def _fetch_probe_chunk(self, url=None, chunk_size=2**17):
         with self._get(url, stream=True) as resp:
