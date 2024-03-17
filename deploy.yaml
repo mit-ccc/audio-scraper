@@ -20,6 +20,7 @@ data:
   COMPUTE_TYPE: int8
   REMOVE_AUDIO: 'true'
   TRANSCRIBE_CHUNK_ERROR_THRESHOLD: '1'
+
 ---
 
 apiVersion: v1
@@ -137,7 +138,7 @@ metadata:
     app.kubernetes.io/name: audio-scraper
     app.kubernetes.io/component: ingest
 spec:
-  replicas: 1
+  replicas: 9
   selector:
     matchLabels:
       app.kubernetes.io/name: audio-scraper
@@ -187,7 +188,7 @@ metadata:
     app.kubernetes.io/name: audio-scraper
     app.kubernetes.io/component: transcribe
 spec:
-  replicas: 1
+  replicas: 8
   selector:
     matchLabels:
       app.kubernetes.io/name: audio-scraper
