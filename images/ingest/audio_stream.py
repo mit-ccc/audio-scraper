@@ -413,12 +413,9 @@ class MediaUrl:
         except KeyError as exc:
             raise ValueError("Must provide url") from exc
 
-        autodetect = kwargs.pop('autodetect', True)
-
         super().__init__(**kwargs)
 
         self.url = url
-        self.autodetect = autodetect
 
         self.session = rq.Session()
         self.session.headers.update({'User-Agent': UserAgent().random})
@@ -434,26 +431,28 @@ class MediaUrl:
             self._ext = ''
 
     def _detect_ext(self):
-        pa_ext = self._parse_ext()
+        status = {
+            'ffprobe': self._autodetect_ext_ffprobe(),
+            'mime': self._autodetect_ext_mime_type(),
+            'parse': self._autodetect_ext_parse(),
+        }
 
-        if pa_ext != '' or not self.autodetect:
-            return pa_ext
+        if status['ffprobe'] is not None:
+            return status['ffprobe']
 
-        au_ext = self._autodetect_ext_ffprobe()
-        if au_ext is not None:
-            return au_ext
+        if status['parse'] is not None:
+            return status['parse']
 
-        mt_ext = self._autodetect_ext_mime_type()
-        if mt_ext is not None:
-            return mt_ext
+        if status['mime'] is not None:
+            return status['mime']
 
         return ''
 
-    def _parse_ext(self):
+    def _autodetect_ext_parse(self):
         pth = urlparse.urlparse(self.url).path
         ext = os.path.splitext(os.path.basename(pth))[1][1:]
 
-        return ext
+        return ext if ext != '' else None
 
     def _autodetect_ext_ffprobe(self):
         chunk = self._fetch_probe_chunk()
@@ -465,13 +464,13 @@ class MediaUrl:
             mimetype = resp.headers.get('Content-Type')
 
         if mimetype is None:
-            return ''
+            return None
 
         if ';' in mimetype:
             mimetype = mimetype.split(';')[0]
 
         ext = mt.guess_extension(mimetype)
-        return '' if ext is None else ext[1:]
+        return None if ext is None else ext[1:]
 
     @property
     def _is_iheart(self):
@@ -510,7 +509,7 @@ class MediaUrl:
 
     @backoff.on_exception(backoff.expo, rq.exceptions.RequestException,
                           max_tries=5, max_time=600)
-    def _query(self, method='GET', url=None, **kwargs):
+    def _query(self, url=None, method='GET', **kwargs):
         if url is None:
             url = self.url
 
@@ -518,11 +517,11 @@ class MediaUrl:
         resp = method(url, timeout=self.timeout, **kwargs)
         return resp.raise_for_status()
 
-    def _get(self, **kwargs):
-        return self._query(method='GET', **kwargs)
+    def _get(self, url=None, **kwargs):
+        return self._query(url=url, method='GET', **kwargs)
 
-    def _head(self, **kwargs):
-        return self._query(method='HEAD', **kwargs)
+    def _head(self, url=None, **kwargs):
+        return self._query(url, method='HEAD', **kwargs)
 
     def _fetch_probe_chunk(self, url=None, chunk_size=2**17):
         with self._get(url, stream=True) as resp:
