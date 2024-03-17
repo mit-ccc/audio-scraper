@@ -65,7 +65,7 @@ To get started, you need to do a few things:
     will need.
 
 ## Usage
-To start up locally one machine, you can use the provided Makefile and
+To start up locally on one machine, you can use the provided Makefile and
 deploy.yaml. Run `make start` to create a minikube cluster, and then `make` or
 equivalently `make up` to deploy the application to it. You can monitor it by
 examining the files it writes, or using Kubernetes' `kubectl` command. Minikube
