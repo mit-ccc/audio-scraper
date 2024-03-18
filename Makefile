@@ -66,5 +66,9 @@ clean:
 	find . -name '.mypy_cache' -not -path '*/\.git/*' -exec rm -rf {} \+
 
 lint:
-	pylint --rcfile=.pylintrc images/ingest/
-	pylint --rcfile=.pylintrc images/transcribe/
+	for dir in ingest transcribe; do \
+		pylint \
+			--rcfile=./.pylintrc \
+			--init-hook="import sys; sys.path.append('images/$$dir')" \
+			"images/$$dir"; \
+	done
