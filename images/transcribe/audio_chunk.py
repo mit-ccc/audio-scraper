@@ -16,7 +16,7 @@ import boto3
 logger = logging.getLogger(__name__)
 
 
-class Chunk:
+class AudioChunk:
     '''
     Encapsulates an audio file for processing
     '''

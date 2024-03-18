@@ -7,7 +7,7 @@ import logging
 
 import pyodbc
 
-from chunk import Chunk
+from audio_chunk import AudioChunk
 from transcriber import Transcriber
 
 
@@ -184,7 +184,7 @@ class TranscribeWorker:  # pylint: disable=too-many-instance-attributes
                 self.acquire_task(cur)
 
                 try:
-                    chunk = Chunk(
+                    chunk = AudioChunk(
                         url=self.url,
                         source=self.source,
                         lang=self.lang
