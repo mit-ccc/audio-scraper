@@ -3,7 +3,6 @@ import logging
 import subprocess as sp
 
 import ffmpeg
-import requests as rq
 
 import exceptions as ex
 
