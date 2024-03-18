@@ -31,6 +31,7 @@ def log_setup():
 
 
 if __name__ == '__main__':
+    # pylint: disable=invalid-name
     log_setup()
 
     store_url = os.getenv('STORE_URL')

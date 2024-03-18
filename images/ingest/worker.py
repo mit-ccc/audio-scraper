@@ -18,7 +18,6 @@ from urllib.parse import urlparse
 
 import boto3
 import pyodbc
-import backoff
 
 import exceptions as ex
 from audio_stream import AudioStream
@@ -202,8 +201,8 @@ class Worker:  # pylint: disable=too-many-instance-attributes
             except Exception:  # pylint: disable=broad-except
                 cur.rollback()
                 raise
-            else:
-                cur.commit()
+
+            cur.commit()
 
     def unlock_task(self):
         '''
@@ -226,8 +225,8 @@ class Worker:  # pylint: disable=too-many-instance-attributes
             except Exception:  # pylint: disable=broad-except
                 cur.rollback()
                 raise
-            else:
-                cur.commit()
+
+            cur.commit()
 
     def delete_task(self):
         '''
@@ -251,8 +250,8 @@ class Worker:  # pylint: disable=too-many-instance-attributes
             except Exception:  # pylint: disable=broad-except
                 cur.rollback()
                 raise
-            else:
-                cur.commit()
+
+            cur.commit()
 
     def acquire_task(self):
         '''

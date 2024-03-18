@@ -1,3 +1,7 @@
+'''
+ffmpeg-based utilities for discovering the formats and sample rates of audio
+'''
+
 import json
 import logging
 import subprocess as sp

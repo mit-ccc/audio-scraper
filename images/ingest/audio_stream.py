@@ -14,7 +14,6 @@ import random
 import logging
 import mimetypes as mt
 import itertools as it
-import subprocess as sp
 import configparser as cp
 import urllib.parse as urlparse
 
@@ -23,7 +22,6 @@ from abc import ABC, abstractmethod
 
 import bs4
 import m3u8
-import ffmpeg
 import backoff
 import requests as rq
 
@@ -107,6 +105,7 @@ class MediaIterator(ABC):
     def __iter__(self):
         return self
 
+    # pylint: disable=inconsistent-return-statements
     def __next__(self):
         while self.retry_error_cnt <= self.stream.retry_error_max:
             try:
@@ -125,6 +124,9 @@ class MediaIterator(ABC):
 
                 self.content = self._refresh()
                 continue
+
+        # pylint complains these are inconsistent returns, but the implicit
+        # return here is unreachable -- false alarm
 
 
 class DirectStreamIterator(MediaIterator):
@@ -189,7 +191,7 @@ class DirectStreamIterator(MediaIterator):
                 jitter_frac = 0.1 * (random.random() - 0.5)
                 sleep_time = wait * (1 + jitter_frac)
 
-                logger.debug(f'Sleeping {sleep_time} seconds')
+                logger.debug('Sleeping %s seconds', sleep_time)
                 time.sleep(sleep_time)
 
                 wait *= 2
@@ -365,7 +367,7 @@ class WebscrapeIterator(MediaIterator):
 
             return ret
         except AssertionError as exc:
-            msg = 'No usable streams in {0}'.format(self.stream.url)
+            msg = f'No usable streams in {self.stream.url}'
             raise ex.IngestException(msg) from exc
 
 
@@ -386,18 +388,21 @@ class IHeartIterator(WebscrapeIterator):
 
         if 'secure_shoutcast_stream' in streams.keys():
             return streams['secure_shoutcast_stream']
-        elif 'shoutcast_stream' in streams.keys():
+
+        if 'shoutcast_stream' in streams.keys():
             return streams['shoutcast_stream']
-        elif 'secure_pls_stream' in streams.keys():
+
+        if 'secure_pls_stream' in streams.keys():
             return streams['secure_pls_stream']
-        elif 'pls_stream' in streams.keys():
+
+        if 'pls_stream' in streams.keys():
             return streams['pls_stream']
-        else:
-            # playlists don't seem to work right and just loop over the same
-            # short piece of audio. possibly they have to be refreshed by
-            # in-page JS, which is way way more trouble than it's worth when a
-            # direct stream is available instead.
-            return self._url_filter(streams.values(), playlist=False)
+
+        # playlists don't seem to work right and just loop over the same
+        # short piece of audio. possibly they have to be refreshed by
+        # in-page JS, which is way way more trouble than it's worth when a
+        # direct stream is available instead.
+        return self._url_filter(streams.values(), playlist=False)
 
 
 class MediaUrl:

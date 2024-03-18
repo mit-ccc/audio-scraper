@@ -7,7 +7,6 @@ import time
 import logging
 import multiprocessing as mp
 
-import exceptions as ex
 from worker import payload
 
 
