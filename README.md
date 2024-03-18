@@ -12,8 +12,8 @@ time alignments. (Transcription is via OpenAI's Whisper models and the excellent
 There's support for many kinds of online streams, including direct aac/mp3/etc
 streams and playlists like .pls and .m3u. There's also support for webscrape
 streams where direct or playlist URLs have to be extracted from a page. Out of
-the box only iHeartRadio streams are webscrape-able; if you want others you'll
-have to write a bit of code that says how get stream URLs from the page.
+the box, only iHeartRadio streams are webscrape-able; if you want others you'll
+have to write a bit of code that says how to get stream URLs from the page.
 
 The app is packaged with Kubernetes for both local use via minikube and an easy
 migration path to a larger deployment on a K8s cluster.
