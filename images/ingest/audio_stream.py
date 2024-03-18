@@ -436,20 +436,20 @@ class MediaUrl:
             self._ext = ''
 
     def _detect_ext(self):
-        ff = self._autodetect_ext_ffprobe()
-        pa = self._autodetect_ext_parse()
-        mm = self._autodetect_ext_mime_type()
+        ffprobe = self._autodetect_ext_ffprobe()
+        parse = self._autodetect_ext_parse()
+        mime = self._autodetect_ext_mime_type()
 
         # there are a lot of spurious detections of playlist files as 'lrc'
         # files, which are a format for time-aligned lyrics
-        if ff is not None and ff != 'lrc':
-            return ff
+        if ffprobe is not None and ffprobe != 'lrc':
+            return ffprobe
 
-        if pa is not None:
-            return pa
+        if parse is not None:
+            return parse
 
-        if mm is not None:
-            return mm
+        if mime is not None:
+            return mime
 
         return ''
 
@@ -623,8 +623,8 @@ class AudioStream(MediaUrl):
                              '-probesize', '2147483647']
 
             try:
-                ar = au.discover_sample_rate(chunk['data'])
-                ffmpeg_params += ['-ar', str(ar)]
+                sample_rate = au.discover_sample_rate(chunk['data'])
+                ffmpeg_params += ['-ar', str(sample_rate)]
             except ex.IngestException:
                 logger.warning('Could not discover sample rate')
 
