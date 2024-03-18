@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: up containers secrets down start stop delete dashboard status clean
+.PHONY: up containers secrets down start stop delete dashboard status clean lint
 
 #
 # Running our app
@@ -64,3 +64,7 @@ clean:
 	find . -name env -type d   -not -path '*/\.git/*' -exec rm -rf {} \+
 	find . -name '__pycache__' -not -path '*/\.git/*' -exec rm -rf {} \+
 	find . -name '.mypy_cache' -not -path '*/\.git/*' -exec rm -rf {} \+
+
+lint:
+	pylint --rcfile=.pylintrc images/ingest/
+	pylint --rcfile=.pylintrc images/transcribe/
