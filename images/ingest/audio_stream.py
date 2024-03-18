@@ -147,7 +147,7 @@ class DirectStreamIterator(MediaIterator):
             headers = {'Range': f'bytes={self._current_byte_pos}-'}
         else:
             headers = {}
-        resp = self.stream._get(stream=True, headers=headers)
+        resp = self.stream.get_url(stream=True, headers=headers)
 
         if self._supports_range is None:  # i.e., first time running this
             arhdr = resp.headers.get('Accept-Ranges', 'none')
@@ -210,14 +210,14 @@ class PlaylistIterator(MediaIterator):
     '''
 
     @abstractmethod
-    def _get_component_urls(self, txt):
-        msg = "Subclasses must implement _get_component_urls"
+    def _find_component_urls(self, txt):
+        msg = "Subclasses must implement _find_component_urls"
         raise NotImplementedError(msg)
 
     def _refresh(self):
         # get the URLs
-        txt = self.stream._fetch_url_stream_safe(max_size=2**16)
-        comps = self._get_component_urls(txt.decode())
+        txt = self.stream.fetch_url_stream_safe(max_size=2**16)
+        comps = self._find_component_urls(txt.decode())
 
         # make streams out of them
         args = dict(self.stream.args, unknown_formats='direct')
@@ -239,7 +239,7 @@ class AsxIterator(PlaylistIterator):
     This class is used to iterate over the contents of an ASX playlist.
     '''
 
-    def _get_component_urls(self, txt):
+    def _find_component_urls(self, txt):
         soup = bs4.BeautifulSoup(txt, features='lxml')
         hrefs = [x['href'] for x in soup.find_all('ref')]
 
@@ -251,7 +251,7 @@ class PlsIterator(PlaylistIterator):
     This class is used to iterate over the contents of a Pls playlist.
     '''
 
-    def _get_component_urls(self, txt):
+    def _find_component_urls(self, txt):
         prs = cp.ConfigParser(interpolation=None)
         prs.read_string(txt)
 
@@ -274,7 +274,7 @@ class M3uIterator(PlaylistIterator):
     This class is used to iterate over the contents of an M3U playlist.
     '''
 
-    def _get_component_urls(self, txt, i=0):
+    def _find_component_urls(self, txt, i=0):
         if i >= 10:
             raise ex.IngestException("m3u playlists nested too deeply")
 
@@ -291,8 +291,8 @@ class M3uIterator(PlaylistIterator):
         else:
             urls = []
             for subpls in pls.playlists:
-                subtxt = self.stream._fetch_url_stream_safe(subpls.uri)
-                urls += self._get_component_urls(subtxt.decode(), i=i+1)
+                subtxt = self.stream.fetch_url_stream_safe(subpls.uri)
+                urls += self._find_component_urls(subtxt.decode(), i=i+1)
 
         return urls
 
@@ -313,7 +313,7 @@ class WebscrapeIterator(MediaIterator):
         raise NotImplementedError(msg)
 
     def _refresh(self):
-        txt = self.stream._fetch_url_stream_safe(max_size=2**20)
+        txt = self.stream.fetch_url_stream_safe(max_size=2**20)
         url = self._webscrape_extract_media_url(txt)
 
         # we'll just proxy for an iterator on the real stream
@@ -325,7 +325,7 @@ class WebscrapeIterator(MediaIterator):
         if stream.media_type in WebscrapeMediaType:
             raise ex.IngestException('WebscrapeIterators may not be nested')
 
-        return stream._iterator
+        return iter(stream)
 
     def _url_filter_extension(self, urls, direct=True, playlist=True):
         assert len(urls) > 0
@@ -347,7 +347,7 @@ class WebscrapeIterator(MediaIterator):
         fmts = [x.value for x in DirectMediaType]
 
         for url in urls:
-            chunk = self.stream._fetch_probe_chunk()
+            chunk = self.stream.fetch_probe_chunk()
             ext = au.probe_format(chunk)
 
             if ext in fmts:
@@ -460,7 +460,7 @@ class MediaUrl:
         return ext if ext != '' else None
 
     def _autodetect_ext_ffprobe(self):
-        chunk = self._fetch_probe_chunk()
+        chunk = self.fetch_probe_chunk()
 
         return au.probe_format(chunk)
 
@@ -468,7 +468,7 @@ class MediaUrl:
         # don't use HEAD here because many poorly configured HTTP servers
         # return some kind of 400/500, whereas opening the stream with a usual
         # GET request will work
-        with self._get(stream=True) as resp:
+        with self.get_url(stream=True) as resp:
             mimetype = resp.headers.get('Content-Type')
 
         if mimetype is None:
@@ -527,28 +527,39 @@ class MediaUrl:
 
         return resp
 
-    def _get(self, url=None, **kwargs):
+    def get_url(self, url=None, **kwargs):
+        '''
+        Fetch a URL, defaulting to self.url, with an HTTP GET request. Default
+        to self.timeout for the HTTP timeout, and use exponential backoff logic
+        to handle HTTP errors.
+        '''
+
         return self._query(url=url, method='GET', **kwargs)
 
-    def _head(self, url=None, **kwargs):
-        return self._query(url, method='HEAD', **kwargs)
+    def fetch_probe_chunk(self, url=None, chunk_size=2**17):
+        '''
+        Fetch an initial chunk of audio for use in autodetecting the format.
+        '''
 
-    def _fetch_probe_chunk(self, url=None, chunk_size=2**17):
-        with self._get(url, stream=True) as resp:
+        with self.get_url(url, stream=True) as resp:
             content = resp.iter_content(chunk_size=chunk_size)
             chunk = next(iter(content))
 
         return chunk
 
-    def _fetch_url_stream_safe(self, url=None, max_size=2**20):
-        # This method is called by subclasses which expect self.stream.url
-        # to be a short text file (playlist or web page), but need to be
-        # robust to the possibility of server misconfiguration actually
-        # returning an audio stream. Trying to fetch the whole thing would
-        # cause the process to hang and eventually lead to out-of-memory
-        # errors. Instead we'll fetch it as a stream and return only the
-        # first max_size decoded bytes.
-        with self._get(url, stream=True) as resp:
+    def fetch_url_stream_safe(self, url=None, max_size=2**20):
+        '''
+        Fetch self.stream.url, using a streaming connection, and return only
+        the first max_size decoded bytes.
+
+        This method is called by subclasses which expect self.stream.url to be
+        a short text file (playlist or web page), but need to be robust to the
+        possibility of server misconfiguration actually returning an audio
+        stream. Trying to fetch the whole thing would cause the process to hang
+        and eventually lead to out-of-memory errors.
+        '''
+
+        with self.get_url(url, stream=True) as resp:
             txt = resp.raw.read(max_size + 1, decode_content=True)
 
         if len(txt) > max_size:
@@ -587,7 +598,7 @@ class AudioStream(MediaUrl):
             msg = "unknown_formats must be 'direct' or 'error'"
             raise ValueError(msg) from exc
 
-        cls = self._get_iterator()
+        cls = self._get_iterator_klass()
         if cls is not None:
             self._iterator = cls(stream=self)
         else:
@@ -607,6 +618,12 @@ class AudioStream(MediaUrl):
         return self._iterator
 
     def iter_time_chunks(self, chunk_size_seconds=30):
+        '''
+        A generator iterating over the audio stream in chunks of a fixed
+        duration (in seconds). The returned chunks are transcoded from the
+        original input format to self.save_format, which defaults to wav.
+        '''
+
         chunk_size = chunk_size_seconds * 1000  # indexing is in milliseconds
         buf = AudioSegment.empty()
 
@@ -650,6 +667,17 @@ class AudioStream(MediaUrl):
                 yield obj.getvalue()
 
     def iter_byte_chunks(self, chunk_size=2**20):
+        '''
+        A generator iterating over the audio stream in chunks of a fixed size
+        (in bytes).
+
+        The returned chunks are exactly as retrieved from the
+        remote, and are not transcoded to self.save_format, unlike with
+        iter_time_chunks. Note that these chunks may not be entirely valid
+        audio, because the starting and ending frames can be incomplete. Using
+        a larger chunk size can minimize the boundary effects this may cause.
+        '''
+
         # Just ignore the format information in c['media_type']
         content = it.chain.from_iterable(c['data'] for c in self._iterator)
 
@@ -669,7 +697,7 @@ class AudioStream(MediaUrl):
         except Exception:  # pylint: disable=broad-except
             pass
 
-    def _get_iterator(self):
+    def _get_iterator_klass(self):
         if self.media_type is None:
             ret = None
         elif self.media_type == PlaylistMediaType.ASX:

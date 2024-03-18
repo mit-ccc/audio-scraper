@@ -13,7 +13,7 @@ from pool import Pool
 logger = logging.getLogger(__name__)
 
 
-def log_setup():
+def _log_setup():
     logging.getLogger('boto3').setLevel(logging.WARNING)
     logging.getLogger('botocore').setLevel(logging.WARNING)
 
@@ -32,7 +32,7 @@ def log_setup():
 
 if __name__ == '__main__':
     # pylint: disable=invalid-name
-    log_setup()
+    _log_setup()
 
     store_url = os.getenv('STORE_URL')
     if store_url is None:

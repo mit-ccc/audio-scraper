@@ -17,7 +17,7 @@ from worker import TranscribeWorker
 logger = logging.getLogger(__name__)
 
 
-def log_setup():
+def _log_setup():
     logging.getLogger('boto3').setLevel(logging.WARNING)
     logging.getLogger('botocore').setLevel(logging.WARNING)
 
@@ -34,7 +34,7 @@ def log_setup():
     )
 
 
-def seed_everything(seed):
+def _seed_everything(seed):
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -42,10 +42,12 @@ def seed_everything(seed):
 
 
 if __name__ == '__main__':
-    log_setup()
+    # pylint: disable=invalid-name
+
+    _log_setup()
 
     SEED = int(os.getenv('SEED', '42'))
-    seed_everything(SEED)
+    _seed_everything(SEED)
 
     thresh = os.getenv('TRANSCRIBE_CHUNK_ERROR_THRESHOLD', None)
     if thresh is None:

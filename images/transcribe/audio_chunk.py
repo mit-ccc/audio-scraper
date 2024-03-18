@@ -1,3 +1,7 @@
+'''
+An AudioChunk class encapsulating a chunk ingested from an online stream.
+'''
+
 from typing import Optional
 
 import io
@@ -30,7 +34,7 @@ class AudioChunk:
         self.source = source
         self.lang = lang
 
-        if self.storage_mode == 's3':
+        if self._storage_mode == 's3':
             self._client = boto3.client('s3')
             self.cache_dir = cache_dir
         else:
@@ -41,7 +45,11 @@ class AudioChunk:
                 logger.warning('Ignoring cache_dir with local files')
 
     def remove(self):
-        if self.storage_mode == 's3':
+        '''
+        Remove this chunk from the backing store (s3 or local files).
+        '''
+
+        if self._storage_mode == 's3':
             if self._is_cached:
                 try:
                     os.unlink(self._cache_path)
@@ -55,7 +63,7 @@ class AudioChunk:
                 key = key[1:]
 
             self._client.delete_object(Bucket=bucket, Key=key)
-        else:  # storage_mode == 'file'
+        else:  # self._storage_mode == 'file'
             try:
                 os.unlink(self._url_parsed.path)
             except FileNotFoundError:
@@ -66,7 +74,7 @@ class AudioChunk:
         return urlparse(self.url)
 
     @cached_property
-    def storage_mode(self):
+    def _storage_mode(self):
         mode = self._url_parsed.scheme.lower()
 
         if mode not in ('s3', 'file'):
@@ -93,14 +101,14 @@ class AudioChunk:
             return fobj.read()
 
     def _read_data(self):
-        if self.storage_mode == 's3':
+        if self._storage_mode == 's3':
             return self._read_data_s3()
 
         return self._read_data_local()
 
     @property
     def _cache_path(self):
-        assert self.storage_mode == 's3'
+        assert self._storage_mode == 's3'
 
         bucket = self._url_parsed.netloc
 
@@ -159,7 +167,7 @@ class AudioChunk:
             fobj.write(results)
 
     @cached_property
-    def times(self):
+    def _times(self):
         name = os.path.basename(self._url_parsed.path).split('.')[0]
         start, end = name.split('-')
 
@@ -169,21 +177,30 @@ class AudioChunk:
         }
 
     def write_results(self, results):
+        '''
+        Write the provided results (of transcription) to backing store, whether
+        s3 or local file.
+        '''
+
         ret = json.dumps({
             'url': self.url,
             'source': self.source,
             'lang': self.lang,
-            'ingest_start_time': self.times['start'],
-            'ingest_end_time': self.times['end'],
+            'ingest_start_time': self._times['start'],
+            'ingest_end_time': self._times['end'],
             'results': results,
         })
 
-        if self.storage_mode == 's3':
+        if self._storage_mode == 's3':
             self._write_results_s3(ret)
         else:
             self._write_results_local(ret)
 
     def fetch(self):
+        '''
+        Fetch and return a bytes object containing the chunk's data.
+        '''
+
         if self._is_cached:
             return self._read_from_cache()
 

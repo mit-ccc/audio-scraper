@@ -75,7 +75,7 @@ class Worker:  # pylint: disable=too-many-instance-attributes
         self.stream = None
         self.iterator = None
 
-        if self.storage_mode == 's3':
+        if self._storage_mode == 's3':
             self._client = boto3.client('s3')
         else:
             self._client = None
@@ -89,7 +89,7 @@ class Worker:  # pylint: disable=too-many-instance-attributes
         return urlparse(self.store_url)
 
     @cached_property
-    def storage_mode(self):
+    def _storage_mode(self):
         mode = self._store_url_parsed.scheme.lower()
 
         if mode not in ('s3', 'file'):
@@ -113,7 +113,7 @@ class Worker:  # pylint: disable=too-many-instance-attributes
             pass
 
         try:
-            self.unlock_task()
+            self._unlock_task()
         except Exception:  # pylint: disable=broad-except
             pass
 
@@ -139,7 +139,7 @@ class Worker:  # pylint: disable=too-many-instance-attributes
         key = start_time + '-' + end_time + '.' + self.save_format
         key = os.path.join(self.source, key)
 
-        if self.storage_mode == 's3':
+        if self._storage_mode == 's3':
             s3_bucket = self._store_url_parsed.netloc
 
             s3_prefix = self._store_url_parsed.path
@@ -150,7 +150,7 @@ class Worker:  # pylint: disable=too-many-instance-attributes
 
             with io.BytesIO(chunk) as fobj:
                 self._client.upload_fileobj(fobj, s3_bucket, s3_key)
-        else:  # self.storage_mode == 'file'
+        else:  # self._storage_mode == 'file'
             path = self._store_url_parsed.path
             path = os.path.join(path, key)
 
@@ -167,7 +167,7 @@ class Worker:  # pylint: disable=too-many-instance-attributes
     # Acquire a task
     #
 
-    def lock_task(self):
+    def _lock_task(self):
         with self._get_conn() as conn:
             cur = conn.cursor()
 
@@ -204,7 +204,7 @@ class Worker:  # pylint: disable=too-many-instance-attributes
 
             cur.commit()
 
-    def unlock_task(self):
+    def _unlock_task(self):
         '''
         Release the lock the worker holds on its source. This should be called
         when the worker exits to avoid orphaning the source.
@@ -266,7 +266,7 @@ class Worker:  # pylint: disable=too-many-instance-attributes
         # Use a spinlock; if there's nothing to work on, let's
         # wait around and keep checking if there is
         while True:
-            res = self.lock_task()
+            res = self._lock_task()
             if res is not None:
                 break
 
@@ -342,7 +342,7 @@ class Worker:  # pylint: disable=too-many-instance-attributes
 
             return dict(zip(cols, ret))
 
-    def stop_if_error(self):
+    def _stop_if_error(self):
         conds = self.get_stop_conditions()
 
         if conds['deleted']:
@@ -357,7 +357,7 @@ class Worker:  # pylint: disable=too-many-instance-attributes
 
         return self
 
-    def mark_failure(self):
+    def _mark_failure(self):
         info = sys.exc_info()
         if info == (None, None, None):
             info = ''
@@ -377,7 +377,7 @@ class Worker:  # pylint: disable=too-many-instance-attributes
                 source_id = ?;
             ''', (info, self.source_id))
 
-    def mark_success(self, url):
+    def _mark_success(self, url):
         logger.debug('Chunk queued')
 
         with self._get_conn() as conn:
@@ -394,12 +394,12 @@ class Worker:  # pylint: disable=too-many-instance-attributes
     # Main loop
     #
 
-    def stream_setup(self):
+    def _stream_setup(self):
         if self.stream is not None:
             self.stream.close()
 
         while True:
-            self.stop_if_error()
+            self._stop_if_error()
 
             try:
                 self.stream = AudioStream(
@@ -411,7 +411,7 @@ class Worker:  # pylint: disable=too-many-instance-attributes
                 self.iterator = self.stream.iter_time_chunks(self.chunk_size_seconds)
             except Exception:  # pylint: disable=broad-except
                 logger.exception('Ingest failure')
-                self.mark_failure()
+                self._mark_failure()
 
                 continue
 
@@ -433,10 +433,10 @@ class Worker:  # pylint: disable=too-many-instance-attributes
         self.acquire_task()
         logger.info('Began ingest: %s from %s', self.source, self.stream_url)
 
-        self.stream_setup()
+        self._stream_setup()
 
         while True:
-            self.stop_if_error()
+            self._stop_if_error()
 
             try:
                 start_time = time.time()
@@ -452,13 +452,13 @@ class Worker:  # pylint: disable=too-many-instance-attributes
                 break
             except Exception:  # pylint: disable=broad-except
                 logger.exception('Ingest failure')
-                self.mark_failure()
+                self._mark_failure()
 
                 # the exception exhausts our iterator (which is actually a
                 # generator), so if we don't refresh the underlying stream
                 # it'll raise StopIteration on the subsequent call to next()
-                self.stream_setup()
+                self._stream_setup()
             else:
-                self.mark_success(out_url)
+                self._mark_success(out_url)
 
         return self

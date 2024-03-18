@@ -13,7 +13,7 @@ import exceptions as ex
 logger = logging.getLogger(__name__)
 
 
-def probe(data, timeout=None):
+def _probe(data, timeout=None):
     args = ['ffprobe', '-show_format', '-show_streams',
             '-of', 'json',
             '-i', 'pipe:0']
@@ -29,16 +29,25 @@ def probe(data, timeout=None):
 
 
 def probe_format(data, timeout=None):
+    '''
+    Use ffprobe to discover and return the format of the input audio, which
+    should be a bytes object.
+    '''
+
     try:
-        res = probe(data, timeout=timeout)
+        res = _probe(data, timeout=timeout)
         return res['format']['format_name']
     except (KeyError, ex.IngestException):
         return None
 
 
 def discover_sample_rate(data):
+    '''
+    Use ffprobe to discover and return the sample rate of the audio provided in
+    the data argument, which should be a bytes object.
+    '''
     try:
-        probe_result = probe(data)
+        probe_result = _probe(data)
 
         audio_stream = next((
             stream

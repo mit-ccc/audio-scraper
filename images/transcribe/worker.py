@@ -1,3 +1,7 @@
+'''
+Main worker class, running one per container.
+'''
+
 from typing import Optional
 
 import sys
@@ -15,6 +19,12 @@ logger = logging.getLogger(__name__)
 
 
 class TranscribeWorker:  # pylint: disable=too-many-instance-attributes
+    '''
+    The worker class that loops forever over: acquiring a task, transcribing
+    it, writing the results to backing store, marking it complete, and then
+    acquiring a new task.
+    '''
+
     # pylint: disable-next=too-many-arguments
     def __init__(self, whisper_version: str = 'base',
                  compute_type: str = 'float32',
@@ -129,7 +139,7 @@ class TranscribeWorker:  # pylint: disable=too-many-instance-attributes
     # Error handling
     #
 
-    def error_count(self, cur):
+    def _error_count(self, cur):
         cur.execute('''
         select
             error_count
@@ -140,7 +150,7 @@ class TranscribeWorker:  # pylint: disable=too-many-instance-attributes
 
         return cur.fetchone()[0]
 
-    def mark_failure(self, cur):
+    def _mark_failure(self, cur):
         info = sys.exc_info()
         info = '' if info == (None, None, None) else str(info)
 
@@ -155,7 +165,7 @@ class TranscribeWorker:  # pylint: disable=too-many-instance-attributes
 
         return self
 
-    def mark_success(self, cur):
+    def _mark_success(self, cur):
         logger.debug('Updating DB to remove chunk %s', self.url)
         cur.execute('''
         delete
@@ -196,16 +206,16 @@ class TranscribeWorker:  # pylint: disable=too-many-instance-attributes
 
                     logger.info('Successfully transcribed %s', self.url)
                 except Exception:  # pylint: disable=broad-except
-                    if self.error_count(cur) < self.chunk_error_threshold:
+                    if self._error_count(cur) < self.chunk_error_threshold:
                         msg = 'Chunk %s with url %s failed'
                     else:
                         msg = 'Chunk %s with url %s failed too many times ' + \
                               'and will no longer be retried'
                     logger.exception(msg, self.chunk_id, self.url)
 
-                    self.mark_failure(cur)
+                    self._mark_failure(cur)
                 else:
-                    self.mark_success(cur)
+                    self._mark_success(cur)
 
                     if self.remove_audio:
                         logger.debug('Removing chunk %s', self.url)

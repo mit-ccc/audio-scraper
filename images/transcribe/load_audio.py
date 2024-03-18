@@ -1,3 +1,7 @@
+'''
+ffmpeg-based utilities for loading audio and probing its properties.
+'''
+
 from typing import Optional
 
 import json
@@ -11,7 +15,7 @@ import ffmpeg
 logger = logging.getLogger(__name__)
 
 
-def probe(data, timeout=None):
+def _probe(data, timeout=None):
     args = ['ffprobe', '-show_format', '-show_streams',
             '-of', 'json',
             '-i', 'pipe:0']
@@ -26,8 +30,13 @@ def probe(data, timeout=None):
 
 
 def discover_sample_rate(data):
+    '''
+    Use ffprobe to discover and return the sample rate of the audio provided in
+    the data argument, which should be a bytes object.
+    '''
+
     try:
-        probe_result = probe(data)
+        probe_result = _probe(data)
 
         audio_stream = next((
             stream
@@ -45,6 +54,11 @@ def discover_sample_rate(data):
 
 
 def load_audio(data, sample_rate: Optional[int] = None):
+    '''
+    Load audio from a bytes object and return it as a numpy array (in pcm_s16le
+    format) at the same sample rate.
+    '''
+
     if sample_rate is None:
         sample_rate = discover_sample_rate(data)
 
